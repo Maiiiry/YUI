@@ -3,15 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 // Broker fakes for wireBroker: a single captured client so tests can assert publish/start/dispose.
 const { brokerClient, createBrokerClient, createReconciler, selectFetch } = vi.hoisted(() => {
   const brokerClient = {
-    publish: vi.fn().mockResolvedValue(undefined),
+    publish: vi.fn(async () => undefined),
     start: vi.fn(),
     dispose: vi.fn(),
   };
   return {
     brokerClient,
     createBrokerClient: vi.fn(() => brokerClient),
-    createReconciler: vi.fn(() => ({ onChange: vi.fn().mockResolvedValue(undefined) })),
-    selectFetch: vi.fn().mockResolvedValue(undefined),
+    createReconciler: vi.fn(() => ({ onChange: vi.fn(async () => undefined) })),
+    selectFetch: vi.fn(async () => undefined),
   };
 });
 vi.mock("../../../io/chat/broker/broker-client", () => ({ createBrokerClient }));
