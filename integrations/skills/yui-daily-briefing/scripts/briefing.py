@@ -4,6 +4,7 @@ import argparse
 import datetime
 import errno
 import glob
+import html as markup
 import json
 import os
 import re
@@ -28,6 +29,11 @@ URL_MAX = 2048
 TIME_MAX = 64
 STATUSES = ("ok", "stale", "failed", "disabled")
 LEDGER = "spoken.json"
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+WEEKDAYS = (("Mon", "월"), ("Tue", "화"), ("Wed", "수"), ("Thu", "목"), ("Fri", "금"), ("Sat", "토"), ("Sun", "일"))
+FLAGS = {"failed": ("Failed", "실패"), "stale": ("Stale", "지연")}
+SLOT = re.compile(r"<!-- slot: (\S+?)(?: lang=([\w-]+))? -->|<!-- /slot -->")
+UNSAFE = re.compile(r"<script|\son[a-z]+\s*=|javascript:", re.I)
 BRIEFING_PATH = re.compile(r"reports/\d{4}/\d{2}/W[1-5]/\d{2}/[^./\\][^/\\]*\.md")
 OLD_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -197,6 +203,123 @@ def briefings(spool):
     return [path for path in paths if BRIEFING_PATH.fullmatch(path)]
 
 
+def day_pages(spool):
+    pattern = os.path.join(spool, "reports", "????", "??", "W?", "??", "index.html")
+    return [spool_relative(path, spool) for path in sorted(glob.glob(pattern))
+            if re.fullmatch(r"reports/\d{4}/\d{2}/W[1-5]/\d{2}/index\.html", spool_relative(path, spool))]
+
+
+def latest_per_source(paths):
+    # A stamped rerun (<source>.<HHMMSSffffff>.md) is newer than the plain file of the same source.
+    latest = {}
+    for path in paths:
+        name = path.rsplit("/", 1)[1][: -len(".md")]
+        source, _, stamp = name.partition(".")
+        if source not in latest or stamp > latest[source][0]:
+            latest[source] = (stamp, path)
+    return {source: path for source, (_, path) in sorted(latest.items())}
+
+
+def board_row(spool, folder, paths, has_page):
+    _, year, month, _, day = folder.split("/")
+    date = datetime.date(int(year), int(month), int(day))
+    producers, flags = [], set()
+    for source, path in latest_per_source(paths).items():
+        with open(os.path.join(spool, path), encoding="utf-8", errors="replace") as file:
+            text = file.read()
+        statuses = set(re.findall(r'^  - \{.*\bstatus: "(\w+)"', text, re.M))
+        flag = next((status for status in FLAGS if status in statuses), None)
+        flags.update(statuses & set(FLAGS))
+        count = len(re.findall(r"^\d+\. \[", text, re.M))
+        css = f' class="flag-{flag}"' if flag else ""
+        producers.append(f'        <li{css}><span class="p-name">{markup.escape(source)}</span> <span class="p-count">{count}</span></li>')
+    en, ko = WEEKDAYS[date.weekday()]
+    label = f'<span class="day-iso">{date}</span><span class="day-week"><span lang="en">{en}</span><span lang="ko">{ko}</span></span>'
+    link = f'<a class="day-link" href="{folder}/">{label}</a>' if has_page else f'<span class="day-link">{label}</span>'
+    status = "".join(f'<span class="status status-{flag}"><span lang="en">{FLAGS[flag][0]}</span><span lang="ko">{FLAGS[flag][1]}</span></span>'
+                     for flag in FLAGS if flag in flags)
+    return "\n".join([
+        '    <li class="day">', f"      {link}", '      <ul class="producers">', *producers, "      </ul>",
+        f'      <p class="day-status">{status}</p>', "    </li>"])
+
+
+def board(spool):
+    days = {}
+    for path in briefings(spool):
+        days.setdefault(path.rsplit("/", 1)[0], []).append(path)
+    pages = {path.rsplit("/", 1)[0] for path in day_pages(spool)}
+    rows = [board_row(spool, folder, days[folder], folder in pages) for folder in sorted(days, reverse=True)]
+    with open(os.path.join(ASSETS, "board.html"), encoding="utf-8") as file:
+        template = file.read()
+    write_file(os.path.join(spool, "index.html"), template.replace("<!-- days -->\n", "".join(row + "\n" for row in rows)))
+    return 0
+
+
+def slots(html):
+    found, opened = [], []
+    for match in SLOT.finditer(html):
+        if match.group(1) is None:
+            if opened:
+                name, lang, start = opened.pop()
+                found.append((name, lang, html[start:match.start()]))
+        else:
+            opened.append((match.group(1), match.group(2), match.end()))
+    return found
+
+
+def has_text(body):
+    return bool(re.sub(r"<[^>]*>", "", re.sub(r"<!--.*?-->", "", body, flags=re.S)).strip())
+
+
+def page_check(spool, date):
+    try:
+        day = datetime.date.fromisoformat(date)
+    except ValueError:
+        print(f"not a date: {date}", file=sys.stderr)
+        return 2
+    page = f"{day_folder(day)}/index.html"
+    try:
+        with open(os.path.join(spool, page), encoding="utf-8") as file:
+            html = file.read()
+    except OSError:
+        print(f"no page at {page}", file=sys.stderr)
+        return 2
+    found = slots(html)
+    for name, lang, body in found:
+        if UNSAFE.search(body):
+            label = name + (f" lang={lang}" if lang else "")
+            print(f"a script, an event handler, or a javascript: link in slot: {label} in {page}", file=sys.stderr)
+            return 2
+
+    def first(name, lang=None):
+        return next((body for slot, slot_lang, body in found if slot == name and slot_lang == lang), None)
+
+    required = [("title", None), ("languages", None)]
+    languages = re.findall(r'<option\b[^>]*\bvalue="([\w-]+)"', first("languages") or "")
+    if first("languages") is not None and has_text(first("languages")) and not languages:
+        print(f"the languages slot names no language in {page}", file=sys.stderr)
+        return 2
+    required += [(name, lang) for name in ("date", "summary") for lang in languages or ["en"]]
+    required += [("contents", None), ("producers", None)]
+    sections = re.findall(r"<section\b[^>]*>", (first("producers") or "") + (first("personal") or ""))
+    for section in sections:
+        classes = re.search(r'\bclass="([^"]*)"', section)
+        if not classes or "producer" not in classes.group(1).split():
+            continue
+        named = re.search(r'\baria-labelledby="([^"]+)"', section)
+        if not named:
+            print(f"a producer section without aria-labelledby in {page}: {section}", file=sys.stderr)
+            return 2
+        required += [(f"intro:{named.group(1)}", lang) for lang in languages]
+    for name, lang in required:
+        label = name + (f" lang={lang}" if lang else "")
+        body = first(name, lang)
+        if body is None or not has_text(body):
+            print(f"{'missing' if body is None else 'unfilled'} slot: {label} in {page}", file=sys.stderr)
+            return 2
+    return 0
+
+
 def pending(spool):
     spoken = load_ledger(spool, set_aside=False)
     for relative in briefings(spool):
@@ -252,9 +375,29 @@ def publish(spool):
     if not remotes:
         print(f"the spool repository has no remote: {spool}", file=sys.stderr)
         return 2
-    paths = briefings(spool)
-    if os.path.isfile(os.path.join(spool, ".gitignore")):
-        paths.append(".gitignore")
+    paths = briefings(spool) + [name for name in (".gitignore", ".nojekyll") if os.path.isfile(os.path.join(spool, name))]
+    pages = day_pages(spool)
+    if pages:
+        # The day pages link the shared assets and the board at the repository root.
+        folder = os.path.join(spool, "src")
+        if os.path.islink(folder) or not os.path.realpath(folder).startswith(os.path.realpath(spool) + os.sep):
+            print(f"the spool's src/ leads out of the spool: {folder}", file=sys.stderr)
+            return 2
+        shared = []
+        for name in sorted(os.listdir(os.path.join(ASSETS, "src"))):
+            with open(os.path.join(ASSETS, "src", name), encoding="utf-8") as file:
+                text = file.read()
+            target = os.path.join(spool, "src", name)
+            try:
+                with open(target, encoding="utf-8") as file:
+                    current = file.read()
+            except OSError:
+                current = None
+            if current != text:
+                write_file(target, text)
+            shared.append(f"src/{name}")
+        board(spool)
+        paths += pages + ["index.html"] + shared
     if paths:
         added = git(spool, "add", "--", *paths)
         if added.returncode != 0:
@@ -335,6 +478,9 @@ def main():
     mark_parser.add_argument("paths", nargs="+", metavar="PATH", help="path relative to the spool, as pending prints it")
     commands.add_parser("publish", help="commit the briefings and push them to the spool's git remote")
     commands.add_parser("migrate", help="move <YYYY-MM-DD>/ folders at the spool root into reports/")
+    commands.add_parser("board", help="write the list of every day, index.html, at the spool root")
+    check_parser = commands.add_parser("page-check", help="check that a day's page has every slot filled")
+    check_parser.add_argument("date", metavar="YYYY-MM-DD", help="the day whose page to check")
     args = parser.parse_args()
     spool = args.spool
     if not spool:
@@ -357,6 +503,10 @@ def main():
         return publish(spool)
     if args.command == "migrate":
         return migrate(spool)
+    if args.command == "board":
+        return board(spool)
+    if args.command == "page-check":
+        return page_check(spool, args.date)
     return mark_spoken(spool, args.paths)
 
 
