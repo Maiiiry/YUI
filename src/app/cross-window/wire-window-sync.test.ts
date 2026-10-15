@@ -52,7 +52,6 @@ const noopLog = { info: () => {}, warn: () => {}, error: () => {}, debug: () => 
 describe("createSettingsBroadcast", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    unsubscribeLocale.mockClear();
   });
   afterEach(() => vi.useRealTimers());
 
@@ -152,8 +151,6 @@ describe("createSettingsBroadcast", () => {
 });
 
 describe("wireSettingsReload", () => {
-  beforeEach(() => vi.clearAllMocks());
-
   const setup = (vrmUrls: { before: string; after: string }) => {
     let hook = (): void => {};
     const speakerSelection = { reloadFromStorage: vi.fn() };
@@ -195,13 +192,6 @@ describe("wireSettingsReload", () => {
 describe("wireWindowSync", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    fakeBridge.onSettingsChanged.mockClear();
-    fakeBridge.emitSettingsChanged.mockClear();
-    fakeBridge.dispose.mockClear();
-    createSettingsBridge.mockClear();
-    wireStorageSync.mockClear();
-    wireStorageSyncDispose.mockClear();
-    vi.mocked(reloadLocaleFromStorage).mockClear();
   });
 
   afterEach(() => {
