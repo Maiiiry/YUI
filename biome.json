@@ -41,7 +41,9 @@
       "suspicious": {
         "noExplicitAny": "off",
         "noAssignInExpressions": "off",
-        "noConsole": "error"
+        "noConsole": "error",
+        "noFocusedTests": "error",
+        "noSkippedTests": "error"
       },
       "complexity": {
         "noImportantStyles": "off"
