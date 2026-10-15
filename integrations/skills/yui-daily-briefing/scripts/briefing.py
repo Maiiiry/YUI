@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keeps daily briefings as dated markdown files, records which ones the agent has spoken, and publishes them."""
+"""Keeps daily briefings as markdown files in day folders, records which ones the agent has spoken, and publishes them."""
 import argparse
 import datetime
 import errno
@@ -28,11 +28,17 @@ URL_MAX = 2048
 TIME_MAX = 64
 STATUSES = ("ok", "stale", "failed", "disabled")
 LEDGER = "spoken.json"
-BRIEFING_PATH = re.compile(r"\d{4}-\d{2}-\d{2}/[^./\\][^/\\]*\.md")
+BRIEFING_PATH = re.compile(r"reports/\d{4}/\d{2}/W[1-5]/\d{2}/[^./\\][^/\\]*\.md")
+OLD_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def spool_relative(path, spool):
     return os.path.relpath(path, spool).replace(os.sep, "/")
+
+
+def day_folder(date):
+    # W1 holds days 1-7, W2 8-14, W3 15-21, W4 22-28, W5 29-31.
+    return f"reports/{date:%Y}/{date:%m}/W{(date.day - 1) // 7 + 1}/{date:%d}"
 
 
 def unwritable(char):
@@ -171,7 +177,7 @@ def write(spool, source):
         briefing, error = failed(source, caught), caught
     with lock(spool):
         spoken = load_ledger(spool, set_aside=False)
-        day = os.path.join(spool, date)
+        day = os.path.join(spool, *day_folder(now.date()).split("/"))
         existing = glob.glob(os.path.join(day, f"{source}.md")) + glob.glob(os.path.join(day, f"{source}.{'[0-9]' * 12}.md"))
         # Each source keeps at most one unspoken briefing per day; a spoken one never changes.
         unspoken = [path for path in existing if spool_relative(path, spool) not in spoken]
@@ -186,7 +192,8 @@ def write(spool, source):
 
 
 def briefings(spool):
-    paths = (spool_relative(path, spool) for path in sorted(glob.glob(os.path.join(spool, "????-??-??", "*.md"))))
+    pattern = os.path.join(spool, "reports", "????", "??", "W?", "??", "*.md")
+    paths = (spool_relative(path, spool) for path in sorted(glob.glob(pattern)))
     return [path for path in paths if BRIEFING_PATH.fullmatch(path)]
 
 
@@ -224,14 +231,21 @@ def git_failed(result):
     return 1
 
 
-def publish(spool):
+def own_work_tree(spool):
     try:
         top = git(spool, "rev-parse", "--show-toplevel")
     except FileNotFoundError:
+        return None
+    # A spool nested in another work tree would commit and push that repository.
+    return top.returncode == 0 and os.path.samefile(top.stdout.strip(), spool)
+
+
+def publish(spool):
+    work_tree = own_work_tree(spool)
+    if work_tree is None:
         print("git is not on PATH", file=sys.stderr)
         return 2
-    # A spool nested in another work tree would commit and push that repository.
-    if top.returncode != 0 or not os.path.samefile(top.stdout.strip(), spool):
+    if not work_tree:
         print(f"the spool is not the top of a git work tree: {spool}", file=sys.stderr)
         return 2
     remotes = git(spool, "remote").stdout.split()
@@ -239,6 +253,8 @@ def publish(spool):
         print(f"the spool repository has no remote: {spool}", file=sys.stderr)
         return 2
     paths = briefings(spool)
+    if os.path.isfile(os.path.join(spool, ".gitignore")):
+        paths.append(".gitignore")
     if paths:
         added = git(spool, "add", "--", *paths)
         if added.returncode != 0:
@@ -252,11 +268,64 @@ def publish(spool):
     return git_failed(pushed) if pushed.returncode != 0 else 0
 
 
+def old_days(spool):
+    days = []
+    for name in sorted(os.listdir(spool)):
+        if OLD_DAY.fullmatch(name) and os.path.isdir(os.path.join(spool, name)):
+            try:
+                days.append((name, datetime.date.fromisoformat(name)))
+            except ValueError:
+                continue
+    return days
+
+
+def new_path(path):
+    day, _, rest = path.partition("/")
+    try:
+        return f"{day_folder(datetime.date.fromisoformat(day))}/{rest}" if OLD_DAY.fullmatch(day) and rest else path
+    except ValueError:
+        return path
+
+
+def migrate(spool):
+    with lock(spool):
+        moves = [(f"{name}/{file}", f"{day_folder(date)}/{file}")
+                 for name, date in old_days(spool) for file in sorted(os.listdir(os.path.join(spool, name)))]
+        for _, new in moves:
+            if os.path.lexists(os.path.join(spool, new)):
+                print(f"a file already sits at {new}; nothing was moved", file=sys.stderr)
+                return 2
+        work_tree = own_work_tree(spool)
+        tracked = set(git(spool, "ls-files", "-z").stdout.split("\0")) if work_tree else set()
+        for old, new in moves:
+            os.makedirs(os.path.dirname(os.path.join(spool, new)), exist_ok=True)
+            # git mv records the move as a rename, so `git log --follow` crosses it.
+            moved = git(spool, "mv", "--", old, new) if old in tracked else None
+            if moved is None:
+                os.replace(os.path.join(spool, old), os.path.join(spool, new))
+            elif moved.returncode != 0:
+                return git_failed(moved)
+        for name, _ in old_days(spool):
+            os.rmdir(os.path.join(spool, name))
+        # Every old-form key is rewritten, so a run cut short by a git failure is healed by the next one.
+        ledger = load_ledger(spool, set_aside=False)
+        if any(new_path(path) != path for path in ledger):
+            ledger = {new_path(path): stamp for path, stamp in ledger.items()}
+            write_file(os.path.join(spool, LEDGER), json.dumps(ledger, ensure_ascii=False, indent=1) + "\n")
+        old_in_head = [name for name in git(spool, "ls-tree", "--name-only", "HEAD").stdout.split("\n")
+                       if OLD_DAY.fullmatch(name)] if work_tree else []
+        if old_in_head:
+            committed = git(spool, "commit", "--quiet", "-m", "Move briefings into reports/", "--", *old_in_head, "reports")
+            if committed.returncode != 0:
+                return git_failed(committed)
+    return 0
+
+
 def main():
     if os.name == "nt" and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", newline="\n")
         sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
-    parser = argparse.ArgumentParser(description="Keep YUI daily briefings as dated markdown files.")
+    parser = argparse.ArgumentParser(description="Keep YUI daily briefings as markdown files in day folders.")
     parser.add_argument("--spool", default=os.environ.get("YUI_BRIEFING_SPOOL"), help="spool directory; default $YUI_BRIEFING_SPOOL")
     commands = parser.add_subparsers(dest="command", required=True)
     write_parser = commands.add_parser("write", help="write today's briefing from the gather JSON on stdin")
@@ -264,7 +333,8 @@ def main():
     commands.add_parser("pending", help="print every briefing not yet spoken")
     mark_parser = commands.add_parser("mark-spoken", help="record briefings as spoken")
     mark_parser.add_argument("paths", nargs="+", metavar="PATH", help="path relative to the spool, as pending prints it")
-    commands.add_parser("publish", help="commit the dated briefings and push them to the spool's git remote")
+    commands.add_parser("publish", help="commit the briefings and push them to the spool's git remote")
+    commands.add_parser("migrate", help="move <YYYY-MM-DD>/ folders at the spool root into reports/")
     args = parser.parse_args()
     spool = args.spool
     if not spool:
@@ -285,6 +355,8 @@ def main():
         return pending(spool)
     if args.command == "publish":
         return publish(spool)
+    if args.command == "migrate":
+        return migrate(spool)
     return mark_spoken(spool, args.paths)
 
 
