@@ -1,14 +1,14 @@
 # YUI
 
-Embodied desktop-pet frontend (the head) for the selected backend agent (the brain): it renders a VRM character, fires candidate events at the backend, and performs whatever the backend sends back. Judgment lives in the backend, so the language here is about _firing_ and _performing_, never about deciding what to say. This glossary is the canonical vocabulary; issue titles, test names, and proposals use these terms.
+Embodied desktop-pet frontend (the body) for the selected backend agent (the brain): it renders a VRM character, fires candidate events at the backend, and performs whatever the backend sends back. Judgment lives in the backend, so the language here is about _firing_ and _performing_, never about deciding what to say. This glossary is the canonical vocabulary; issue titles, test names, and proposals use these terms.
 
 ## Language
 
 ### Split of responsibility
 
-**Head**:
+**Body**:
 YUI itself — VRM rendering, sensing, and I/O surfaces. Holds no judgment.
-_Avoid_: client-side brain, frontend agent
+_Avoid_: head, client-side brain, frontend agent
 
 **Brain**:
 The selected backend — judgment, persona, memory, and the agent loop.
@@ -56,13 +56,13 @@ The placeholder user-content text on turns with no real user utterance.
 The per-turn JSON block of environment + trigger state the client injects ahead of the utterance.
 
 **Expression Broker**:
-The MCP where the head publishes its renderable emotion/motion/emotion_text vocabulary; the brain reads it to know what it can cue.
+The MCP where the body publishes its renderable emotion/motion/emotion_text vocabulary; the brain reads it to know what it can cue.
 _Avoid_: bare "broker", message broker
 
 ### Presence & body
 
 **Posture**:
-The character's current physical state: `standing`, `sitting`, `peeking`, `dragging`, `walking`, or `climbing`. Sent to the brain as context.
+The character's current physical state: `standing`, `sitting`, `peeking`, `dragging`, `walking`, `climbing`, or `lying`. Sent to the brain as context on the `body:` line.
 _Avoid_: state, pose, stance
 
 **Perch**:

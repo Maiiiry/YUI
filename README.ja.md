@@ -4,180 +4,147 @@
 
 **あなただけの「嫁」と、デスクトップで一緒に暮らそう。**
 
-*タブの中のチャットボットではありません。ウィンドウの上に立ち、カーソルを目で追い、話したいことがあるときに話しかけてくる。本当にそこにいるキャラクターです。*
+*画面の中のチャットボットではなく、デスクトップに「いる」キャラクター。ウィンドウの上に立ち、カーソルを目で追い、話したいことがあれば自分からそっと声をかけてくれます。*
 
-![CI](https://github.com/yw0nam/YUI/actions/workflows/ci.yml/badge.svg)
-![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![three.js](https://img.shields.io/badge/three.js-000000?logo=three.js&logoColor=white)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-yw0nam.github.io%2FYUI-8A63D2)](https://yw0nam.github.io/YUI/)
+[![Discussions](https://img.shields.io/github/discussions/yw0nam/YUI?logo=github)](https://github.com/yw0nam/YUI/discussions)
+[![CI](https://github.com/yw0nam/YUI/actions/workflows/ci.yml/badge.svg)](https://github.com/yw0nam/YUI/actions/workflows/ci.yml)
 
-[English](README.md) | 日本語
+[クイックスタート](#クイックスタート) · [デモ動画](https://youtu.be/dIOQdoAp0GE) · [ドキュメント](https://yw0nam.github.io/YUI/) · [Discussions](https://github.com/yw0nam/YUI/discussions) · [English](README.md)
 
-<a href="https://youtu.be/dIOQdoAp0GE"><img src="docs/public/yui-hero.gif" alt="YUI — 透過・常に最前面のオーバーレイとして、ブラウザウィンドウの上に立つVRMキャラクター。頭と視線がマウスカーソルを追い、画面の内容について入力された質問に吹き出しで答える" width="820">
-
-</a>
-
-[▶ デモ動画をフルで見る](https://youtu.be/dIOQdoAp0GE)
+<a href="https://youtu.be/dIOQdoAp0GE"><img src="docs/public/yui-hero.gif" alt="YUI — 透過・常に最前面のオーバーレイとして、ブラウザウィンドウの上に立つVRMキャラクター。頭と視線がマウスカーソルを追い、画面の内容について入力された質問に吹き出しで答える" width="820"></a>
 
 </div>
 
-## なぜ作ったのか
+- **デスクトップで暮らす** — お気に入りのVRMキャラクターがウィンドウの上に立ち、カーソルを目で追いかけます。ウィンドウの上を歩いたり、縁にちょこんと腰かけたり、別のウィンドウへ飛び移ったりも。
+- **「頭脳」は自由に選べる** — ローカルモデル、クラウドのAPI、自作のエージェントまで。考えて話すのはつないだAIなので、賢さも性格も選び方しだいです。
+- **自分から話しかける。でも、控えめに** — あいさつやちょっとした声かけは自分から。話すことがないときは、静かに見守ってくれます。
 
-この名前は偶然ではありません。YUIは
-[『ソードアート・オンライン』のユイ](https://swordartonline.fandom.com/wiki/Yui)から
-名前をもらいました。ただのプログラムであることをやめ、キリトとアスナが帰る場所で
-待っている存在になったAIです。このリポジトリが目指すのもそこです。呼び出しては
-閉じるアシスタントではなく、体と声と気分、そして自分の心を持ち、デスクトップで
-あなたと*一緒に*暮らすコンパニオンです。
-
-ここにあるものはすべて、そのひとつの目標のためにあります。
-
-- **彼女には体があります。** あなたが選んだVRMモデルが、どんなキャラクターでも、
-どんな見た目でも、作業中の画面の上に透過オーバーレイとして描画されます。
-- **彼女はウィンドウの中ではなく、デスクトップで暮らします。** ブラウザの上端に
-腰かけ、マウスを目で追い、呼吸し、まばたきし、体を揺らし、画面を使いたいときは
-場所を空けてくれます。
-- **彼女には声と表情があります。** 音声で聞き、音声で話し、感情とモーションのキューに
-よって、ただ答えるだけでなく反応します。
-- **彼女には心があり、それを選ぶのはあなたです。** YUIにモデルは内蔵されていません。
-[Hermes](https://github.com/nousresearch/hermes-agent)のような本格的なエージェントでも、
-素のモデルエンドポイントでも、OpenAI互換のバックエンドなら何でもつなげます。
-彼女の賢さも、こだわりも、*あなたらしさ*も、つないだバックエンドそのままです。
-
-画面の主役はキャラクターです。UIは邪魔にならないよう控えていて、見せるものが
-あるときだけ現れ、終わればまた下がります。*ふだんは見えず、現れるときは温かく。*
-
-## 動作要件
-
-| 項目 | 内容 |
-| --- | --- |
-| デスクトップ | Apple Silicon搭載のmacOS、またはWindows x64 |
-| チャットバックエンド | OpenAIかGroqのAPIキー、起動中の[Ollama](https://ollama.com)か[LM Studio](https://lmstudio.ai)、またはResponses APIかプッシュWebSocketで動く自前のエージェント |
-| チャットモデル | 既定のChat Completionsモードではツール呼び出し(tool calling)に対応したモデルが必要です。YUIは常に `generate_express` ツールを宣言するためです(`src/io/chat/tools/client-tools.ts`)。OpenAIなら[`gpt-5-mini`](https://platform.openai.com/docs/models/gpt-5-mini)、Ollamaなら[`qwen3`](https://ollama.com/library/qwen3)(先に `ollama pull qwen3` で取得してください)、Groqなら[`llama-3.3-70b-versatile`](https://console.groq.com/docs/tool-use) |
-| 音声 | 任意。[対応プロバイダー](#対応プロバイダー)のTTSとSTT |
-| ソースからのビルド | Git、pnpm(Node)、Rust、macOSではXcode Command Line Tools、WindowsではMSVCビルドツールとWebView2。[インストールガイド](docs/guide/install.md)で準備できます |
+*名前の由来は[『ソードアート・オンライン』のユイ](https://swordartonline.fandom.com/wiki/Yui)。ただのプログラムから、「おかえり」と迎えてくれる存在になったAIです。*
 
 ## クイックスタート
 
-次の文を、お使いのコーディングエージェント(Claude Code、Codex、OpenCode、Cursor)に貼り付けてください。
+用意するもの:
 
-```text
-Install https://github.com/yw0nam/YUI following https://raw.githubusercontent.com/yw0nam/YUI/main/docs/guide/install.md
-```
+- Apple Silicon搭載のMac、またはWindows x64のPC
+- コーディングエージェント(Claude Code、Codex、OpenCode、Cursorなど)
+- チャットモデル(OpenAIかGroqのAPIキー、またはローカルで動く[Ollama](https://ollama.com)か[LM Studio](https://lmstudio.ai))
 
-エージェントがツールチェーンをインストールし、リポジトリをクローンし、指定したバックエンドを接続して、`pnpm tauri dev` を実行できる状態にしてくれます。
+1. 下の一文をコーディングエージェントに貼り付けます。
 
-エージェントが手元にない場合は、[最新リリース](https://github.com/yw0nam/YUI/releases/latest)からmacOS(Apple Silicon)用の `.dmg`、またはWindows x64用インストーラーを入手してください。ビルドは署名されていません。アプリを一度開き、macOSにブロックされたら **システム設定 → プライバシーとセキュリティ → このまま開く** で許可してください。
+   ```text
+   Install https://github.com/yw0nam/YUI following https://raw.githubusercontent.com/yw0nam/YUI/main/docs/guide/install.md
+   ```
 
-**はじめての会話:**
+   必要なツールの導入からチャットモデルの接続、動作確認まで、エージェントが進めてくれます。APIキーなど、エージェントにわからないことだけ聞かれます。
+2. エージェントに起動を頼んでください。自分で起動する場合は、ターミナルでYUIのフォルダを開いて `pnpm tauri dev` を実行します。初回は数分かかり、そのあと画面にキャラクターが現れます。
+3. `/`(または `Cmd/Ctrl+Shift+Y`)を押して、話しかけてみてください。
 
-1. キャラクターを右クリックして設定を開き、**接続** タブ(プラグのアイコン)に切り替えます。
-2. チャットセクションで **プロバイダー** のプリセット(OpenAI、Ollama、LM Studio、Groq)を選びます。エンドポイントURLは自動で入力されます。
-3. **チャットモデル** にツール呼び出し対応のモデル([動作要件](#動作要件)を参照)を入力し、OpenAIまたはGroqの場合は **チャット API キー** も入力します。
-4. パネルを閉じ、`/`(または `Cmd/Ctrl+Shift+Y`)を押してテキスト入力を開き、メッセージを送信してください。
+声で話すには、**設定 → 接続** で音声認識と音声合成も設定してください(キャラクターを右クリックすると設定が開きます)。チャットモデルの変更も同じ画面でできます。OpenAI、Ollama、LM Studio、GroqはChat Completions方式で接続するため、ツール呼び出し(tool calling)に対応したモデルが必要です。たとえばOpenAIなら `gpt-5-mini`、Ollamaなら `qwen3`、Groqなら `llama-3.3-70b-versatile` が使えます。
 
-## 機能
+## できること
 
 ### ウィンドウの上で暮らす
 
 <img src="docs/public/yui-locomotion.gif" alt="画面の下端を歩き、画面の端をよじ登り、ウィンドウの上に飛び乗ってその縁に座り、空中で放されると床まで落ちるYUI" width="720">
 
-彼女はウィンドウの上に腰かけ、横の端から顔をのぞかせ、床やウィンドウの上を
-散歩し、ウィンドウからウィンドウへ飛び移ります。空中で放すと、真下にある最初の
-足場まで落ちて着地します。ウィンドウの側面や画面の端をよじ登って上のモニターへ
-移る動きは開発中で、アプリ内でもそのように表示されています。
+ウィンドウの上に腰かけたり、端からひょっこり顔をのぞかせたり。床やウィンドウの上を散歩して、ウィンドウからウィンドウへ飛び移ります。空中で手を離すと、下にあるウィンドウや画面の下端まで落ちて着地します。
 
-### どんなバックエンドでも、構造化されたキューで体を動かす
+### 表情・しぐさ・声で反応する
 
 <img src="docs/public/yui-feature-cues.jpg" alt="口元に手を当て、目を閉じたうれしそうな表情で笑うYUI。その下の吹き出しには「The build passed. Want me to open the pull request for review?」と表示されている" width="360">
 
-YUIは、OpenAI互換のChat Completionsエンドポイント、Responses APIのエージェント、
-またはpush WebSocketで接続するバックエンドと会話します。感情、モーション、
-ボイスタグ、字幕は、返答テキストと並んで `generate_express` キューとして届きます。
+つないだAIが、返事に合わせて表情やしぐさ、声の調子を選びます。文字を返すだけでなく、笑ったり、すねたり、照れたり。しゃべると口が動き、つついたりなでたりすると反応します。
 
 ### 自分から、控えめに話しかける
 
-<img src="docs/public/yui-feature-proactive.png" alt="Proactive設定タブ。画面ウォッチ、操作がない状態が5分・10分・30分続いたときのループリアクション、09:00・12:00・18:00・23:00の定時のあいさつ、10分のプロアクティブ間隔、1時間あたりキュー24回・自発ターン40回の上限" width="400">
+<img src="docs/public/yui-feature-proactive.png" alt="Proactive設定タブ。画面ウォッチ、操作がない状態が5分・10分・30分続いたときの反応、09:00・12:00・18:00・23:00の定時のあいさつ、自分から話しかける間隔10分、1時間あたりキュー24回・自発ターン40回の上限" width="400">
 
-定時のあいさつ、アイドル時の声かけ、画面ウォッチのキュー、その日最初の操作、
-外部からの `/signals` が、それぞれターンのきっかけになります。デバウンス、
-1時間あたりの上限、各ターン後の静かな間隔がその頻度を抑え、バックエンドは
-どのキューに対しても、沈黙で応えることを選べます。
+決まった時間のあいさつ、しばらく手が止まったときの声かけ、オンにすればアプリを切り替えたときの反応も。自分から話しかける回数や間隔は設定で調整できます。話すことがなければ、静かに見守ってくれます。
 
-リップシンクやタッチへの反応からMods、witnessログまで、そのほかの機能はすべて[機能一覧](docs/guide/features.md)にまとめています。
-
-## 対応プロバイダー
-
-各プロバイダーは設定の接続タブで選びます。セットアップ手順は
-[接続ガイド](docs/guide/getting-started.md)にあります。表にないプロバイダーを
-追加してほしい場合は、
-[機能リクエストのissue](https://github.com/yw0nam/YUI/issues/new?template=feature_task.md)
-を立てるか、PRを送ってください。
-
-### Chat
-
-| プロバイダー | プロトコル(`chat_api`) | ホスティング | モデル例 |
-| --- | --- | --- | --- |
-| OpenAI | `chat_completions` | ホスト型、APIキー | `gpt-5-mini` |
-| Ollama | `chat_completions` | ローカル | `qwen3` |
-| LM Studio | `chat_completions` | ローカル | ツール呼び出し対応の任意のモデル |
-| Groq | `chat_completions` | ホスト型、APIキー | `llama-3.3-70b-versatile` |
-| [Hermes Agent](integrations/hermes/README.md) | `push`, `responses` | セルフホスト | エージェントが動かすモデル |
-| カスタムエンドポイント | `chat_completions`, `responses`, `push` | 該当プロトコルに対応した任意のサーバー | `chat_completions` ではツール呼び出し対応モデル |
-
-### TTS
-
-| プロバイダー | ホスティング | 既定のモデル | ボイス |
-| --- | --- | --- | --- |
-| [Irodori](https://github.com/Aratako/Irodori-TTS-Server) | セルフホスト | `irodori-tts` | サーバーのボイスとインポートした参照音声、日本語のみ |
-| OpenAI | ホスト型、APIキー | `gpt-4o-mini-tts` | 内蔵ボイス13種 |
-| [Fish Audio](https://fish.audio/) | ホスト型、APIキー | `s2.1-pro-free` | アカウントのボイスモデル、インポートした音声、ライブラリの任意のボイスID |
-
-### STT
-
-| プロバイダー | ホスティング | 設定 |
-| --- | --- | --- |
-| OpenAI互換の任意の文字起こしエンドポイント(`/audio/transcriptions`) | ローカルまたはホスト型 | `stt_base_url` |
-| Groq | ホスト型、APIキー | `stt_base_url` と `stt_model`(例: `whisper-large-v3-turbo`) |
+**ほかにも:** 自分のVRMモデル、話の途中でも声で割り込める音声会話、画像の添付、会話履歴、日本語・英語・韓国語のUI、エージェントがPC上で使えるツールなど。詳しくは[機能一覧](docs/guide/features.md)をご覧ください。
 
 ## 仕組み
 
-YUIは体で、バックエンドは心です。クライアントが*何を*話すかを決めることは
-ありません。届いたテキストをそのまま表示するだけで、沈黙とは空のテキストの
-ことです。クライアントの役目は、反応する価値のある瞬間(あなたが入力している、
-操作が止まった、アプリがフォーカスされた)に気づいてエージェントに渡すことで、
-応えるかどうか、どう応えるかはエージェントが決めます。
+YUIは「体」、つないだモデルやエージェントが「頭脳」です。メッセージを送ったとき、しばらく操作しなかったとき、アプリを切り替えたとき——そんな出来事をYUIが拾って、つないだAIに伝えます。話すかどうか、何を話すかを決めるのはAIのほうです。その返事に、YUIが表情と声としぐさをつけます。
+
+## 「頭脳」をつなぐ
+
+YUI自体はモデルを内蔵していません。プロバイダーは **設定 → 接続** で選びます。
+
+| | プロバイダー |
+| --- | --- |
+| チャット | OpenAI · Ollama · LM Studio · Groq · [Hermes Agent](integrations/hermes/README.md) · OpenAI互換のエンドポイント |
+| 音声合成(TTS) | [Irodori](https://github.com/Aratako/Irodori-TTS-Server)(日本語) · OpenAI · [Fish Audio](https://fish.audio/) |
+| 音声認識(STT) | OpenAI互換の文字起こしエンドポイント · Groq |
+
+<details>
+<summary>プロバイダーの詳細</summary>
+
+#### チャット
+
+| プロバイダー | プロトコル(`chat_api`) | 実行環境 | モデル例 |
+| --- | --- | --- | --- |
+| OpenAI | `chat_completions` | クラウド(APIキー) | `gpt-5-mini` |
+| Ollama | `chat_completions` | ローカル | `qwen3` |
+| LM Studio | `chat_completions` | ローカル | ツール呼び出し対応の任意のモデル |
+| Groq | `chat_completions` | クラウド(APIキー) | `llama-3.3-70b-versatile` |
+| [Hermes Agent](integrations/hermes/README.md) | `push`, `responses` | セルフホスト | エージェント側で使用するモデル |
+| カスタムエンドポイント | `chat_completions`, `responses`, `push` | 該当プロトコルに対応した任意のサーバー | `chat_completions` ではツール呼び出し対応モデル |
+
+#### TTS
+
+| プロバイダー | 実行環境 | 既定のモデル | ボイス |
+| --- | --- | --- | --- |
+| [Irodori](https://github.com/Aratako/Irodori-TTS-Server) | セルフホスト | `irodori-tts` | サーバーのボイスとインポートした参照音声、日本語のみ |
+| OpenAI | クラウド(APIキー) | `gpt-4o-mini-tts` | 内蔵ボイス13種 |
+| [Fish Audio](https://fish.audio/) | クラウド(APIキー) | `s2.1-pro-free` | アカウントのボイスモデル、インポートした音声、ライブラリの任意のボイスID |
+
+#### STT
+
+| プロバイダー | 実行環境 | 設定 |
+| --- | --- | --- |
+| OpenAI互換の任意の文字起こしエンドポイント(`/audio/transcriptions`) | ローカルまたはクラウド | `stt_base_url` |
+| Groq | クラウド(APIキー) | `stt_base_url` と `stt_model`(例: `whisper-large-v3-turbo`) |
+
+それぞれのセットアップ手順は[接続ガイド](docs/guide/getting-started.md)にあります。使いたいプロバイダーが見当たらなければ、[Discussions](https://github.com/yw0nam/YUI/discussions)で気軽に相談するか、PRを送ってください。
+
+</details>
 
 ## 既知の制限
 
-- 公式ビルドの対象はApple Silicon搭載のmacOSとWindows x64です。Intel MacとLinuxは公式にはサポートしていません。
-- リリースビルドは署名されていないため、macOSでは初回に許可が必要です([クイックスタート](#クイックスタート)を参照)。
-- ウィンドウの側面や上のモニターへのよじ登りは、アプリ内で開発中と表示されます。
-- Irodori TTSは日本語のみ話します。
+- 対応環境はApple Silicon搭載のmacOSとWindows x64です。Intel MacとLinuxは公式サポート外です。
+- 今のところ、サポートしているインストール方法はコーディングエージェント経由のみです。Releasesページのインストーラーはまだ初期版で、署名もしていません。
+- ウィンドウの側面や上のモニターへのよじ登りは、アプリ内で「開発中」と表示されます。
+- Irodori TTSは日本語専用です。
 
 ## ドキュメント
 
-- [機能一覧](docs/guide/features.md)
-- [操作方法](docs/guide/controls.md): キーボード、マウス、トレイ
-- [彼女にできること](docs/guide/capabilities.md)
-- [コーディングエージェントでインストールする](docs/guide/install.md)
-- [インストールと接続のガイド](docs/guide/getting-started.md): チャットバックエンド、Expression Broker(非推奨、v0.6.0で削除)、TTS、STT、自分のVRM
-- [ビルド、実行、ログ](docs/agent-guide/build-run.md)
-- [プロジェクト構成と技術スタック](docs/agent-guide/project-structure.md)
-- [`generate_express` キューの仕様](docs/reference/client-context.md)
-- [`AGENTS.md`](AGENTS.md): このリポジトリで作業するコーディングエージェント向けの案内
-- [`CONTEXT.md`](CONTEXT.md): 用語集。正式な用語(head / brain、firing、express cues)
-- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+**使う人向け**
 
-## サポート
+- [機能一覧](docs/guide/features.md) · [操作方法](docs/guide/controls.md) · [YUIと一緒にできること](docs/guide/capabilities.md)
+- [コーディングエージェントでインストール](docs/guide/install.md) · [接続ガイド](docs/guide/getting-started.md)(チャット、音声、自分のVRM)
 
-- バグ報告や機能要望: バグまたは機能のテンプレートから[Issueを作成](https://github.com/yw0nam/YUI/issues/new/choose)してください。
-- YUIが本来どう振る舞うか: [`PRODUCT.md`](PRODUCT.md)と[ドキュメント](#ドキュメント)を参照してください。
+**開発する人向け**
+
+- [ビルド・実行・ログ](docs/agent-guide/build-run.md) · [プロジェクト構成](docs/agent-guide/project-structure.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`AGENTS.md`](AGENTS.md)(コーディングエージェント向け) · [`CONTEXT.md`](CONTEXT.md)(用語集) · [バックエンド連携の仕様](docs/reference/client-context.md)
+
+## コミュニティ
+
+- 質問・アイデア・作品の共有: [GitHub Discussions](https://github.com/yw0nam/YUI/discussions)
+- バグ報告・機能要望: [Issueを作成](https://github.com/yw0nam/YUI/issues/new/choose)
+- 気に入ったら、⭐で応援してもらえるとうれしいです。ほかの人がYUIを見つけるきっかけになります。
 
 ## クレジット
 
-モーションアセット(`public/motions/*.vrma`)の出どころは3つあります。
+モーションはShiny氏の[Mate Engine](https://github.com/shinyflvre/Mate-Engine)、necocoya氏の[EmoteSet_Free_v130](https://booth.pm/ja/items/1065089)、[Mixamo](https://www.mixamo.com/)のものを使っています。既定のキャラクターは[ピクシブ株式会社](https://vroid.pixiv.help/hc/en-us/articles/360013482714)の **千駄ヶ谷 篠(Sendagaya Shino)** を、[Coatie](https://hub.vroid.com/en/characters/4593660874193246717)氏がVRM 1.0に変換したものです。
+
+<details>
+<summary>アセットのクレジットと利用条件の全文</summary>
+
+モーションアセット(`public/motions/*.vrma`)は、次の3つの提供元のものを使っています。
 
 大半のクリップは、Shiny氏の
 [Mate Engine](https://github.com/shinyflvre/Mate-Engine)プロジェクトから抽出した
@@ -191,7 +158,7 @@ Shiny氏から別途許可を得る必要があります。
 改変、変換、クレジットを表記したうえでの同梱は許可されています。元ファイル単体での
 再販売は禁止されています。
 
-移動系のクリップ `walk`、`jump`、`falling`、`landing`、クライム一式
+移動系のクリップ `walk`、`jump`、`falling`、`landing`、よじ登る・降りる動作のモーション一式
 (`climb_up`、`climb_up_done`、`climb_down`、`climb_down_landing`)、`sit_down`、
 `stand_up` は[Mixamo](https://www.mixamo.com/)のもので、Mixamoの規約に基づき
 ロイヤリティフリーです。
@@ -205,6 +172,8 @@ Shiny氏から別途許可を得る必要があります。
 [`resources/vrms/Sendagaya_Shino.PROVENANCE.md`](resources/vrms/Sendagaya_Shino.PROVENANCE.md)
 をご覧ください。
 
+</details>
+
 ## ライセンス
 
 YUIはソースアベイラブルです。ソースコードは
@@ -212,6 +181,5 @@ YUIはソースアベイラブルです。ソースコードは
 クレジットを表記すれば、非商用での利用、改変、再配布は無料です。**商用利用には
 作者の許可が必要です**([https://github.com/yw0nam](https://github.com/yw0nam))。
 
-同梱のモーションアセット(`public/motions/*.vrma`)は、このライセンスの対象には
-**含まれません**。それぞれ原作者の条件に従います。上の[クレジット](#クレジット)を
-ご覧ください。
+同梱のモーションアセット(`public/motions/*.vrma`)は、このライセンスの対象には**含まれません**。
+それぞれ原作者の条件に従います。上の[クレジット](#クレジット)をご覧ください。
