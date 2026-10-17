@@ -622,7 +622,8 @@ describe("backend_caller — previous-turn line", () => {
     const [, request] = script.spy.mock.calls[0];
     const items = request.input as Array<{ role: string; content: string }>;
     const text = clientContextTextOf(items.find((m) => m.role === "user")!.content);
-    expect(text).not.toContain("previous:");
+    expect(text).toContain("trigger: user message");
+    expect(text).not.toContain("previous turn:");
   });
 });
 
