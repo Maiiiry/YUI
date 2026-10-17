@@ -15,5 +15,8 @@ pub fn register<R: Runtime>(builder: Builder<R>) -> Builder<R> {
     // Global hotkey — registration/removal handled by JS guest binding (input summon hotkey).
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    // Unauthenticated WebDriver server on 127.0.0.1:4445 that drives the verify bundle.
+    #[cfg(all(feature = "verify", desktop))]
+    let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
     builder
 }
