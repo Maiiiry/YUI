@@ -122,6 +122,19 @@ pub fn encode_capture(
 
 // ─── Tauri commands ───────────────────────────────────────────────────────────
 
+/// Logs a finished capture with the monitor id xcap reports and the captured size.
+fn log_screen_captured(monitor: &xcap::Monitor, raw: &ImageBuffer<Rgba<u8>, Vec<u8>>) {
+    log::debug!(
+        "{}",
+        screen_captured_line(monitor.id().ok(), raw.width(), raw.height())
+    );
+}
+
+fn screen_captured_line(monitor_id: Option<u32>, width: u32, height: u32) -> String {
+    let monitor = monitor_id.map_or_else(|| "unknown".to_string(), |id| id.to_string());
+    format!("screen_captured monitor={monitor} width={width} height={height}")
+}
+
 /// Return info for all available displays.
 ///
 /// The enumeration order is stable within a single process lifetime and is used
@@ -161,6 +174,7 @@ pub async fn capture_screen(index: u32, max_edge: u32) -> Result<CaptureDto, Str
             log::error!("screen_capture_failed monitor={index} error={e}");
             e.to_string()
         })?;
+        log_screen_captured(&monitor, &raw);
 
         encode_capture(raw, max_edge)
     })
@@ -183,6 +197,7 @@ pub async fn capture_screen_at(x: i32, y: i32, max_edge: u32) -> Result<CaptureD
             log::error!("screen_capture_failed x={x} y={y} error={e}");
             e.to_string()
         })?;
+        log_screen_captured(&monitor, &raw);
         encode_capture(raw, max_edge)
     })
     .await
@@ -197,6 +212,20 @@ pub async fn capture_screen_at(x: i32, y: i32, max_edge: u32) -> Result<CaptureD
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── screen_captured_line ──
+
+    #[test]
+    fn screen_captured_line_names_the_monitor_id_or_unknown() {
+        assert_eq!(
+            screen_captured_line(Some(69732928), 3024, 1964),
+            "screen_captured monitor=69732928 width=3024 height=1964"
+        );
+        assert_eq!(
+            screen_captured_line(None, 800, 600),
+            "screen_captured monitor=unknown width=800 height=600"
+        );
+    }
 
     // ── build_screen_source ──
 
