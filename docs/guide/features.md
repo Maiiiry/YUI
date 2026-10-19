@@ -58,6 +58,7 @@ Everything YUI does today, grouped by area. The README shows the three headline 
 | Coding-agent hooks | `POST /agent-event` for finished tasks and input requests from coding agents ([hooks guide](https://github.com/yw0nam/YUI/blob/main/docs/agent-guide/agent-completion-hooks.md)) |
 | Signals ingress | `POST /signals` for batches of external signals ([envelope](../reference/signals-ingress.md)) |
 | Daily briefing | Skill for a backend agent that runs scheduled producers on its own machine and speaks their dated briefings on the first activity of the day or on request, with the Scheduled greeting switch on ([skill](https://github.com/yw0nam/YUI/blob/main/integrations/skills/yui-daily-briefing/SKILL.md)) |
+| RimWorld companion | Skill for a backend agent that reads the RimEventFeed mod's events from the game log on the game machine on its turns, tiers them, speaks only the ones worth it, and advises against a stage-by-stage play guide ([skill](https://github.com/yw0nam/YUI/blob/main/integrations/skills/rimworld-companion/SKILL.md)) |
 | Witness log | Local JSONL of app switches and idle periods, kept for 14 days ([format](../reference/witness-log.md)) |
 | Workflows | Saved endpoints fired from a button in the Proactive tab |
 
