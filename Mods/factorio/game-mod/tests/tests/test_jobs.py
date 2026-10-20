@@ -1,38 +1,12 @@
-import json
-
 import pytest
-from conftest import FIXTURES
+from conftest import events, rpc, run
 
 WAIT_1 = {"kind": "wait", "args": {"ticks": 1}}
 WALK_EAST = {"kind": "walk_to", "args": {"pos": {"x": 3, "y": 0}, "radius": 0.5}}
 
 
-@pytest.fixture
-def world(lua):
-    lua.execute(f'dofile("{FIXTURES / "world.lua"}")')
-    return lua.globals()
-
-
-def rpc(world, op, args, id_="t"):
-    request = {"v": 1, "id": id_, "op": op, "args": args, "map_id": "m"}
-    world.RPC.dispatch(json.dumps(request), None, world.DEPS)
-    return json.loads(list(world.PRINTED.values())[-1])
-
-
 def enqueue(world, *jobs, id_="t"):
     return rpc(world, "jobs_enqueue", {"jobs": list(jobs)}, id_)
-
-
-def run(world, n):
-    world.step(n, world.JOBS.tick)
-
-
-def events(world):
-    out = []
-    for event in world.EVENTS.values():
-        data = json.loads(world.JSON.encode(event.data))
-        out.append({"kind": event.kind, "data": data} if data else {"kind": event.kind})
-    return out
 
 
 def states(world):
@@ -147,6 +121,27 @@ def test_a_kind_failure_detail_joins_the_job_failed_data(lua, world, phase):
     ]
 
 
+def test_a_kind_that_sets_no_timeout_by_its_start_fails_unsupported(lua, world):
+    lua.execute(
+        "JOBS.KINDS.fake = { validate = function() return nil end, "
+        "start = function() end, tick = function() end }"
+    )
+    enqueue(world, {"kind": "fake", "args": {"n": 1}}, WAIT_1)
+    run(world, 1)
+    assert events(world) == [
+        {
+            "kind": "job_failed",
+            "data": {
+                "id": 1,
+                "kind": "fake",
+                "reason": "unsupported",
+                "message": "fake set no timeout_ticks at its start",
+            },
+        }
+    ]
+    assert states(world) == [(1, "failed", "unsupported"), (2, "cancelled", "cancelled")]
+
+
 def test_an_idle_runner_reads_no_job_record(lua, world):
     enqueue(world, WAIT_1)
     run(world, 3)
@@ -206,7 +201,7 @@ def test_cancel_all_while_walking_halts_the_body_at_once_and_emits_nothing(lua, 
         (
             "jobs_enqueue",
             {"jobs": [{"kind": "dig", "args": {}}]},
-            "jobs[0].kind: one of wait, walk_to expected",
+            "jobs[0].kind: one of mine, wait, walk_to expected",
         ),
         (
             "jobs_enqueue",
@@ -232,6 +227,24 @@ def test_cancel_all_while_walking_halts_the_body_at_once_and_emits_nothing(lua, 
             "jobs_enqueue",
             {"jobs": [{**WAIT_1, "timeout_ticks": "soon"}]},
             "jobs[0].timeout_ticks: number expected",
+        ),
+        (
+            "jobs_enqueue",
+            {"jobs": [{"kind": "mine", "args": {"count": 5}}]},
+            "jobs[0].args.name: string expected",
+        ),
+        *[
+            (
+                "jobs_enqueue",
+                {"jobs": [{"kind": "mine", "args": {"name": "coal", "count": count}}]},
+                "jobs[0].args.count: integer 1 to 1000 expected",
+            )
+            for count in (0, 1001, 2.5, "five")
+        ],
+        (
+            "jobs_enqueue",
+            {"jobs": [{"kind": "mine", "args": {"name": "coal", "count": 5, "entity": "furnace"}}]},
+            "jobs[0].args.entity: unit_number expected",
         ),
         ("jobs_cancel", {}, "id or all expected"),
         ("jobs_cancel", {"id": 5}, "id: no queued or running job 5"),
