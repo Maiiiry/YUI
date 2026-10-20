@@ -2,6 +2,8 @@
 
 Bridges the Factorio game to the backend agent. It polls the [coop-agent game mod](game-mod/) over RCON, caches game events, and posts a `live` signal to the YUI client when a wake-kind event happens. Runs **host-native** — RCON is a loopback console on the machine running Factorio.
 
+The backend agent's companion skill for this Mod is [`integrations/skills/factorio-companion/SKILL.md`](../../integrations/skills/factorio-companion/SKILL.md).
+
 ## Run
 
 Factorio must run with RCON enabled in the game's own `config.ini`:
@@ -54,7 +56,7 @@ Reach the Mod from the remote agent through the [router](../router/) (`http://lo
 | `factorio_find(area=None, around=None, name=None, type=None, limit=50)` | Find entities by name, type, area, or near the host player |
 | `factorio_inspect(unit_number)` | Read one entity by its unit number |
 | `factorio_recipe(name)` | Read one recipe by name |
-| `factorio_say(text)` | Say one line in game chat as the host character |
+| `factorio_say(text)` | Say one line in game chat under the body's name |
 | `factorio_ping(pos, text)` | Ping a map position with a text label |
 
 A game-mod refusal raises a tool error carrying the game's error code and message, such as `too_large`, `rate_limited`, or `history_gap`. An `id_conflict` reply raises a tool error and is never re-sent under a new id.
