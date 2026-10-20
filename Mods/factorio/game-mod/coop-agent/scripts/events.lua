@@ -8,8 +8,8 @@ local M = {}
 
 --- Only the host's chat lines count; commands raise on_console_command instead.
 function M.on_console_chat(e)
-  local player = host.get()
-  if player and e.player_index == player.index then
+  local player = host.of_chat(e)
+  if player then
     store.push("chat", { player = player.name, text = e.message })
   end
 end
