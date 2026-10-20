@@ -174,17 +174,24 @@ the job's start. A successful `jobs_enqueue` lifts the stop latch.
 | `walk_to` | `pos {x, y}` or `entity` (a `unit_number` that `find` or `inspect` returned), `radius` > 0 | the body is within `radius` of the position, or of the entity's position at the job's start | 3600 | `{distance}` in whole tiles to the target |
 | `wait` | `ticks` > 0 | `ticks` have elapsed | its `ticks` | `{elapsed}` ticks |
 | `mine` | `name` (an item), `count` (integer 1 to 1000), `entity`? (a `unit_number` that `find` or `inspect` returned) | the body holds `count` more `name` than at the job's start | 3600 + `count` × the first target's mining ticks × 3, at most 36000, set when the job starts | `{gained, count, path}`, `path` `native` or `timed` |
+| `deliver` | `item`, `count` (an integer, 1 to 1000) | the body walked to within 3 tiles of the host — stepping out to the 3-tile ring first when it stands closer than 2.5 tiles — and `count` of `item` lie spilled on the host's far side as `item-on-ground` flagged `to_be_looted`, and the body stepped back to 6 tiles from the host, or the step-back's 180 ticks ended, or its walk failed | 3600 | — |
 
 - **Ends.** A job that ends `done` fires `job_done`; when nothing is queued
   after it, `queue_idle` follows. A job that ends `failed` fires one
   `job_failed` and cancels every queued job (`reason:"cancelled"`); no
   `queue_idle` follows. `job_failed` carries `{id, kind, reason}` plus the
-  fields of its kind's failure detail (`walk_to`, `wait` and `mine` add none).
+  fields of its kind's failure detail (`deliver` adds `no_item`
+  `{item, count, held}`, checked at the job's start and again at the spill,
+  and `target_full` `{removed, spilled}`, whose spilled items stay on
+  the ground; `walk_to`, `wait` and `mine` add none). A step-out walk that
+  ends without clearing the 2.5-tile spill radius fails the job with the
+  walker's reason and leaves the inventory untouched.
   `jobs_cancel` fires no event. Whenever a running job ends, the body stops
   walking, mining and crafting and the status line returns to `Standing by`,
   or reads `Holding: <item> <n>` with the body's count after a `mine` ends
   `done`; while a `walk_to` runs it reads `Walking to <x,y>` or
-  `Walking to <entity name>`, while a `mine` runs `Mining <item> <gained>/<count>`.
+  `Walking to <entity name>`, while a `mine` runs `Mining <item> <gained>/<count>`,
+  and while a `deliver` runs `Holding: <item> <n>` with the count the body holds.
 - **Gate.** While a job is queued or running, the runner checks the
   execution gate every tick; with none it does one counter check. A shut
   gate halts the body at once. Its reason is `body_dead` when there is no
@@ -288,9 +295,12 @@ cost, the walker's path
 request, retries, resolution steps, stale results, stuck handling and hooks,
 and the `mine` job's target rule, reach, fluid ores, inventory-delta end,
 timed fallback, `target_full`, one replaced target, dropped state and
-default timeout, and the runner's refusal of a start that sets no
-`timeout_ticks`. The
-headless suite runs with `--probe` and pins, on a seed-42 map: `status` → `events_since` → `say`, write-op replay and
+default timeout, the runner's refusal of a start that sets no
+`timeout_ticks`, and the deliver job's walk to the host, far-side spill,
+step back, `no_item` at start and at the spill, and enqueue validation
+against the item prototypes. The
+headless suite runs with `--probe` and pins, on a seed-42 map: `status` →
+`events_since` → `say`, write-op replay and
 `id_conflict`, `find` → `inspect` on a chest and an assembler, `snapshot`
 power in W and the research queue, `recipe` for iron-gear-wheel, `ping` with
 its chart tag, a save reload that answers the saved `head_seq` after a
@@ -305,7 +315,12 @@ ends `no_path`,
 50 coal natively in 50 × 121 ticks within 10 %, 10 wood from three trees,
 5 stone from a huge rock, a host furnace refused while unmarked, and a
 farther marked furnace mined while the nearer unmarked one stays, and
-`target_full` with a full inventory. Every scene body starts empty.
+`target_full` with a full inventory; and `mine{coal, 20}` then `deliver{coal,
+20}` beside the dev host: the coal lies spilled on the host's far side as
+`to_be_looted` ground items within 3 tiles, the body holds none 60 ticks
+after `job_done`, and body, ground and host conservation holds; and
+`deliver` with fewer coal than asked fails `no_item` with the body still
+holding them. Every scene body starts empty.
 
 On 2.0.77, reading `count_as_rock_for_filtered_deconstruction` on a prototype
 that is not a `simple-entity` returns `nil` without an error; the job still

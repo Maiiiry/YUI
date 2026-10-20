@@ -201,8 +201,26 @@ def test_cancel_all_while_walking_halts_the_body_at_once_and_emits_nothing(lua, 
         (
             "jobs_enqueue",
             {"jobs": [{"kind": "dig", "args": {}}]},
-            "jobs[0].kind: one of mine, wait, walk_to expected",
+            "jobs[0].kind: one of deliver, mine, wait, walk_to expected",
         ),
+        (
+            "jobs_enqueue",
+            {"jobs": [{"kind": "deliver", "args": {}}]},
+            "jobs[0].args.item: string expected",
+        ),
+        (
+            "jobs_enqueue",
+            {"jobs": [{"kind": "deliver", "args": {"item": "iron-plate", "count": 1}}]},
+            "jobs[0].args.item: a known item name expected",
+        ),
+        *[
+            (
+                "jobs_enqueue",
+                {"jobs": [{"kind": "deliver", "args": {"item": "coal", "count": count}}]},
+                "jobs[0].args.count: integer 1 to 1000 expected",
+            )
+            for count in (0, 1001, 1.5, "five")
+        ],
         (
             "jobs_enqueue",
             {"jobs": [{"kind": "walk_to", "args": {"pos": {"x": 1, "y": 2}, "radius": "far"}}]},

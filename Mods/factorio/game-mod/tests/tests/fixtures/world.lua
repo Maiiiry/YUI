@@ -117,6 +117,7 @@ DEPS = {
   to_json = JSON.encode,
   print = function(text) PRINTED[#PRINTED + 1] = text end,
   entity_prototypes = PROTOTYPES,
+  item_prototypes = { coal = {} },
   force = { manual_mining_speed_modifier = 0 },
 }
 
