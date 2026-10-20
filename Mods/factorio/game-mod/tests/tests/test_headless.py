@@ -130,12 +130,13 @@ def test_status_events_since_say_round_trip(server):
         "id": "it-1",
         "ok": True,
         "r": {
-            "mod_version": "0.1.4",
+            "mod_version": "0.1.5",
             "map_id": MAP_ID,
             "seq": 1,
             "body": {"alive": False},
             "stopped": False,
             "queue": {"length": 0},
+            "idle": {"mode": "follow"},
         },
     }
 
@@ -555,7 +556,12 @@ def test_walk_to_reaches_a_furnace_enclosure_through_its_one_gap(server):
     state = body_state(server)
     assert math.dist((state["x"], state["y"]), (0, -100)) <= 2
     assert state["walking"] is False
-    assert labels(server) == ["Buddy · Standing by"]
+    # idle takes over 100 tiles from the host, beyond the leash, and waits; the label lands within its 10-tick check
+    wait_for(
+        lambda: labels(server),
+        lambda texts: texts == ["Buddy · Waiting for dev-host"],
+        "the waiting label",
+    )
 
 
 def test_walk_to_into_a_closed_ring_fails_no_path_after_the_retries(server):
@@ -830,3 +836,108 @@ def test_deliver_with_fewer_coal_than_asked_fails_no_item_and_keeps_the_body_s_c
         }
     ]
     assert body_coal(server) == 3
+
+
+def idle_set(server, id_, args):
+    return server.rpc(v=1, id=id_, op="idle_set", args=args, map_id=MAP_ID)
+
+
+def wait_position(server, done, what, deadline_s=120):
+    return wait_for(
+        lambda: server.rpc(v=1, id="pos", op="status", args={})["r"],
+        lambda status: done(status["body"]["position"]),
+        what,
+        deadline_s,
+    )
+
+
+def test_idle_follow_brings_the_body_within_15_tiles_of_a_moved_host(server):
+    field(server, "")
+    assert idle_set(server, "idle-1", {"mode": "follow"}) == {"v": 1, "id": "idle-1", "ok": True, "r": {}}
+    before = server.rpc(v=1, id="idle-s0", op="status", args={})["r"]["tick"]
+    assert json.loads(server.command("/coop-probe host 40 200")) == {"ok": True, "host": {"x": 40, "y": 200}}
+    server.command("/silent-command game.speed = 10")
+    try:
+        status = wait_position(
+            server, lambda p: math.dist((p["x"], p["y"]), (40, 200)) <= 15, "the body within 15 of 40,200"
+        )
+    finally:
+        server.command("/silent-command game.speed = 1")
+    assert status["tick"] - before <= 600
+    assert status["idle"] == {"mode": "follow"}
+
+
+def test_beyond_the_leash_the_body_stops_and_asks_for_the_host(server):
+    field(server, "")
+    idle_set(server, "idle-2", {"mode": "follow"})
+    assert json.loads(server.command("/coop-probe host 80 200")) == {"ok": True, "host": {"x": 80, "y": 200}}
+    server.command("/silent-command game.speed = 10")
+    try:
+        wait_for(
+            lambda: labels(server),
+            lambda texts: texts == ["Buddy · Waiting for dev-host"],
+            "the waiting label",
+        )
+        before = server.rpc(v=1, id="leash-p1", op="status", args={})["r"]
+        after = wait_for(
+            lambda: server.rpc(v=1, id="leash-p2", op="status", args={})["r"],
+            lambda status: status["tick"] >= before["tick"] + 120,
+            "120 ticks",
+        )
+    finally:
+        server.command("/silent-command game.speed = 1")
+    assert after["body"]["position"] == before["body"]["position"]
+    assert after["idle"] == {"mode": "follow"}
+    assert labels(server) == ["Buddy · Waiting for dev-host"]
+
+
+def test_idle_set_stay_walks_once_and_ignores_the_host(server):
+    seq = field(server, "")["seq"]
+    assert idle_set(server, "stay-1", {"mode": "stay", "pos": {"x": -10, "y": 200}}) == {
+        "v": 1,
+        "id": "stay-1",
+        "ok": True,
+        "r": {},
+    }
+    server.command("/silent-command game.speed = 10")
+    try:
+        (changed,) = wait_events(server, seq, 1)
+        wait_for(
+            lambda: body_state(server),
+            lambda state: not state["walking"] and math.dist((state["x"], state["y"]), (-10, 200)) <= 2,
+            "the body standing at -10,200",
+        )
+    finally:
+        server.command("/silent-command game.speed = 1")
+    assert without_ticks([changed]) == [{"kind": "idle_changed", "data": {"mode": "stay"}}]
+    # status.idle keeps the stay position after the walk arrived
+    assert server.rpc(v=1, id="stay-s", op="status", args={})["r"]["idle"] == {
+        "mode": "stay",
+        "pos": {"x": -10, "y": 200},
+    }
+
+    assert json.loads(server.command("/coop-probe host 40 240")) == {"ok": True, "host": {"x": 40, "y": 240}}
+    before = server.rpc(v=1, id="stay-p1", op="status", args={})["r"]
+    server.command("/silent-command game.speed = 10")
+    try:
+        after = wait_for(
+            lambda: server.rpc(v=1, id="stay-p2", op="status", args={})["r"],
+            lambda status: status["tick"] >= before["tick"] + 120,
+            "120 ticks",
+        )
+    finally:
+        server.command("/silent-command game.speed = 1")
+    assert after["body"]["position"] == before["body"]["position"]
+
+
+def test_stop_latches_until_an_idle_set_follow_clears_it(server):
+    field(server, "")
+    assert server.rpc(v=1, id="stop-idle", op="stop", args={}, map_id=MAP_ID) == {
+        "v": 1,
+        "id": "stop-idle",
+        "ok": True,
+        "r": {},
+    }
+    assert server.rpc(v=1, id="idle-s2", op="status", args={})["r"]["stopped"] is True
+    assert idle_set(server, "idle-4", {"mode": "follow"}) == {"v": 1, "id": "idle-4", "ok": True, "r": {}}
+    assert server.rpc(v=1, id="idle-s3", op="status", args={})["r"]["stopped"] is False
