@@ -10,7 +10,7 @@ from factorio.events.poll import Poller
 from factorio.outcome_log import OutcomeLog
 from factorio.rcon.client import RconClient
 from factorio.recovery import MapRecovery
-from factorio.rpc import RpcClient, RpcError
+from factorio.rpc import RpcClient, RpcError, RpcUnavailable
 
 CLOCK_S = 1_700_000_000.5
 TS = "2023-11-14T22:13:20.500+00:00"
@@ -131,12 +131,14 @@ def test_a_rollback_marks_the_doorbell_and_logs_the_cause(tmp_path):
         [
             {"map_id": "map-a", "seq": 100},
             page("map-a", 95, [event(95)]),
+            {"map_id": "map-a", "seq": 95, "queue": {"length": 2}},
         ]
     )
     poller, session, doorbell, _recovery, log_path = make(tmp_path, rpc)
     session.backend_cursor = 98
     asyncio.run(poller.poll_once())
     assert doorbell.resets == 1
+    assert [call[0] for call in rpc.calls] == ["status", "events_since", "status"]
     reset = [record for record in records(log_path) if record["type"] == "session_reset"]
     assert reset == [
         {
@@ -145,6 +147,33 @@ def test_a_rollback_marks_the_doorbell_and_logs_the_cause(tmp_path):
             "cause": "rollback",
             "poll_cursor": 95,
             "backend_cursor": 95,
+            "queue_length": 2,
+        }
+    ]
+
+
+def test_a_rollback_whose_status_fails_still_records_the_reset(tmp_path):
+    rpc = FakeRpc(
+        [
+            {"map_id": "map-a", "seq": 100},
+            page("map-a", 95, [event(95)]),
+            RpcUnavailable("unknown_outcome", "the game mod did not answer"),
+        ]
+    )
+    poller, session, doorbell, _recovery, log_path = make(tmp_path, rpc)
+    session.backend_cursor = 98
+    asyncio.run(poller.poll_once())
+    assert doorbell.resets == 1
+    assert [call[0] for call in rpc.calls] == ["status", "events_since", "status"]
+    reset = [record for record in records(log_path) if record["type"] == "session_reset"]
+    assert reset == [
+        {
+            "ts": TS,
+            "type": "session_reset",
+            "cause": "rollback",
+            "poll_cursor": 95,
+            "backend_cursor": 95,
+            "queue_length": None,
         }
     ]
 
@@ -185,7 +214,13 @@ def test_a_poll_and_a_tool_on_the_same_map_change_recover_once(tmp_path):
         request = json.loads(command.removeprefix("/coop-rpc "))
         head = {"v": 1, "id": request["id"]}
         if request["op"] == "status":
-            return json.dumps({**head, "ok": True, "r": {"map_id": "map-b", "seq": statuses.pop(0)}})
+            return json.dumps(
+                {
+                    **head,
+                    "ok": True,
+                    "r": {"map_id": "map-b", "seq": statuses.pop(0), "queue": {"length": 2}},
+                }
+            )
         if request["map_id"] != "map-b":
             return json.dumps({**head, "ok": False, "e": "stale_session", "m": "map_id does not match"})
         if request["op"] == "events_since":
@@ -219,7 +254,14 @@ def test_a_poll_and_a_tool_on_the_same_map_change_recover_once(tmp_path):
     codes, events = asyncio.run(case())
     assert codes == ["stale_session", "stale_session"]
     assert [record for record in records(log_path) if record["type"] == "session_reset"] == [
-        {"ts": TS, "type": "session_reset", "cause": "map_change", "poll_cursor": 40, "backend_cursor": 40}
+        {
+            "ts": TS,
+            "type": "session_reset",
+            "cause": "map_change",
+            "poll_cursor": 40,
+            "backend_cursor": 40,
+            "queue_length": 2,
+        }
     ]
     assert [e["seq"] for e in events] == [41, 42]
 
@@ -240,7 +282,8 @@ def test_a_request_spanning_two_map_changes_still_adopts_the_last_map(tmp_path):
 
     asyncio.run(case())
     assert (session.poll_cursor, session.backend_cursor) == (20, 20)
-    assert [record["poll_cursor"] for record in records(log_path) if record["type"] == "session_reset"] == [
-        10,
-        20,
-    ]
+    assert [
+        (record["poll_cursor"], record["queue_length"])
+        for record in records(log_path)
+        if record["type"] == "session_reset"
+    ] == [(10, None), (20, None)]

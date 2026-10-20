@@ -10,17 +10,33 @@ from factorio.outcome_log import OutcomeLog
 
 
 def record_reset(
-    session: Session, doorbell: Doorbell, log: OutcomeLog, cause: Literal["rollback", "map_change"]
+    session: Session,
+    doorbell: Doorbell,
+    log: OutcomeLog,
+    cause: Literal["rollback", "map_change"],
+    status: dict,
 ) -> None:
-    """Flag the next doorbell, then record the reset with its cause and both cursors."""
+    """Flag the next doorbell, then record the reset with its cause, cursors, and queue length."""
     doorbell.mark_reset()
-    log.session_reset(cause=cause, poll_cursor=session.poll_cursor, backend_cursor=session.backend_cursor)
+    queue_length = _queue_length(status)
+    log.session_reset(
+        cause=cause,
+        poll_cursor=session.poll_cursor,
+        backend_cursor=session.backend_cursor,
+        queue_length=queue_length,
+    )
     logger.bind(
         cause=cause,
         map_id=session.map_id,
         poll_cursor=session.poll_cursor,
         backend_cursor=session.backend_cursor,
+        queue_length=queue_length,
     ).info("session_reset")
+
+
+def _queue_length(status: dict) -> int | None:
+    queue = status.get("queue")
+    return queue.get("length") if isinstance(queue, dict) else None
 
 
 class MapRecovery:
@@ -36,4 +52,4 @@ class MapRecovery:
         if self._session.generation != generation and self._session.adopted_map_id == status.get("map_id"):
             return
         self._session.on_map_change(status)
-        record_reset(self._session, self._doorbell, self._log, "map_change")
+        record_reset(self._session, self._doorbell, self._log, "map_change", status)

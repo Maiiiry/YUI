@@ -4,30 +4,12 @@ import asyncio
 import json
 
 import pytest
+from conftest import no_sleep, parse, reply
 from fake_rcon import CLOSE, FakeRconServer
 
 from factorio.events.cache import Session
 from factorio.rcon.client import RconClient
 from factorio.rpc import RpcClient, RpcError, RpcProtocolError, RpcUnavailable
-
-
-def parse(command: str) -> dict:
-    return json.loads(command.removeprefix("/coop-rpc "))
-
-
-def reply(request: dict, *, ok: bool = True, r=None, e=None, m=None) -> str:
-    body = {"v": 1, "id": request["id"], "ok": ok}
-    if ok:
-        body["r"] = r
-    else:
-        body["e"] = e
-        if m is not None:
-            body["m"] = m
-    return json.dumps(body)
-
-
-async def no_sleep(_delay: float) -> None:
-    return None
 
 
 async def with_server(handler, body, **kwargs):

@@ -373,6 +373,26 @@ def test_a_kind_outside_the_wake_list_never_posts(tmp_path):
     assert recorder.bodies == []
 
 
+def test_stopped_and_queue_idle_ring_the_doorbell_but_job_done_does_not(tmp_path):
+    kinds = ("chat", "queue_idle", "job_failed", "stopped", "body_died", "player_died", "rocket_launched")
+    recorder = Recorder([200])
+    bell, feed, _session, client = make_bell(tmp_path, recorder, kinds=kinds)
+
+    async def case():
+        feed.add(event(1, "stopped"))
+        bell.notify(event(1, "stopped"), now=0.0)
+        feed.add(event(2, "queue_idle"))
+        bell.notify(event(2, "queue_idle"), now=0.0)
+        await bell.step(2.0)
+        feed.add(event(3, "job_done"))
+        bell.notify(event(3, "job_done"), now=3.0)
+        await bell.step(5.0)
+        await client.aclose()
+
+    asyncio.run(case())
+    assert [body["signals"][0]["note"] for body in recorder.bodies] == ["stopped, queue_idle"]
+
+
 @pytest.mark.parametrize(
     ("recorder", "status", "error"),
     [
