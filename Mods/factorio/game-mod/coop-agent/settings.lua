@@ -36,4 +36,13 @@ data:extend({
     allowed_values = { "follow", "stay" },
     order = "e",
   },
+  {
+    type = "int-setting",
+    name = "coop-agent-safe-radius",
+    setting_type = "runtime-global",
+    default_value = 48,
+    minimum_value = 16,
+    maximum_value = 128,
+    order = "f",
+  },
 })

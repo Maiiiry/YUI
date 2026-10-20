@@ -2,6 +2,7 @@
 
 local body = require("scripts.body")
 local check = require("scripts.jobs.check")
+local hold = require("scripts.hold")
 local idle = require("scripts.idle")
 local status_line = require("scripts.body.status_line")
 local walker = require("scripts.walker")
@@ -59,9 +60,10 @@ local function cancel_where(deps, id, reason)
   return found
 end
 
-local function fail(deps, job, reason, detail)
+-- The job fails with reason and the queued jobs are cancelled with rest_reason (default "cancelled").
+local function fail(deps, job, reason, detail, rest_reason)
   close(deps, job, "failed", reason)
-  cancel_where(deps, nil, "cancelled")
+  cancel_where(deps, nil, rest_reason or "cancelled")
   local data = {}
   for key, value in pairs(detail or {}) do
     data[key] = value
@@ -103,7 +105,8 @@ end
 
 --- One runner tick: start the next job or advance the running one, then check its timeout.
 function M.tick(deps)
-  if deps.storage.jobs.active == 0 or not gate(deps) then
+  -- a threat holds the queue until its quiet period ends
+  if deps.storage.jobs.active == 0 or not gate(deps) or hold.threat(deps.storage) then
     return
   end
   local job = current(deps.storage.jobs.list)
@@ -135,10 +138,11 @@ function M.enqueue(deps, specs)
   if queue.active + #specs > MAX_JOBS then
     return check.bad_request("jobs: the queue holds at most " .. MAX_JOBS .. " jobs")
   end
-  -- a stop since the last tick still ends the queue it halted; an empty queue takes the walk and follow state from idle
+  -- a stop since the last tick still ends the queue it halted; an empty queue takes the walk and follow state from idle,
+  -- never from a retreat
   if queue.active > 0 then
     gate(deps)
-  else
+  elseif not hold.threat(deps.storage) then
     walker.cancel(deps)
     idle.reset_follow(deps)
   end
@@ -174,6 +178,19 @@ end
 --- Cancels the active job with this id, or every active job when id is nil; false when none had the id.
 function M.cancel(deps, id)
   return cancel_where(deps, id, "cancelled")
+end
+
+--- Ends the queue for reason: a running job fails with it and one job_failed, the queued jobs are cancelled with it.
+function M.abort(deps, reason)
+  if deps.storage.jobs.active == 0 then
+    return
+  end
+  local job = current(deps.storage.jobs.list)
+  if job.state == "running" then
+    fail(deps, job, reason, nil, reason)
+  else
+    cancel_where(deps, nil, reason)
+  end
 end
 
 --- The status part: active job count and the running job.

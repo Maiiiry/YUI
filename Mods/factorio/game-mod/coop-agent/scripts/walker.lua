@@ -1,4 +1,4 @@
--- The one path walker: a pathfinder route walked by walking_state; deps.on_path(path), deps.on_segment(from, to) may return a reject reason.
+-- The one path walker: a pathfinder route walked by walking_state; deps.on_path(path) may return a reject reason.
 
 local body = require("scripts.body")
 
@@ -79,6 +79,20 @@ function M.go(deps, target, radius)
   }
 end
 
+--- The route's points and the index of the one walked toward; nil before a route arrived.
+function M.route(deps)
+  local walker = deps.storage.walker
+  if walker and walker.path then
+    return walker.path, walker.index
+  end
+  return nil
+end
+
+--- Ends the walk under way with reason on its next tick, as a rejected route would.
+function M.reject(deps, reason)
+  deps.storage.walker.fail_reason = reason
+end
+
 --- True while a walk is under way.
 function M.walking(deps)
   return deps.storage.walker ~= nil
@@ -103,12 +117,12 @@ function M.on_path_finished(deps, e)
   end
   walker.request_id = nil
   if e.path then
-    walker.fail_reason = deps.on_path and deps.on_path(e.path)
     local path = {}
     for i, waypoint in ipairs(e.path) do
       path[i] = point(waypoint.position)
     end
     walker.path, walker.index, walker.segment = path, 1, nil
+    walker.fail_reason = deps.on_path and deps.on_path(path)
     return
   end
   walker.failures = walker.failures + 1
@@ -172,10 +186,6 @@ function M.tick(deps)
   local goal = walker.path[walker.index] or walker.target
   if walker.segment ~= walker.index then
     walker.segment = walker.index
-    local rejected = deps.on_segment and deps.on_segment(pos, goal)
-    if rejected then
-      return finish(deps, rejected)
-    end
     walker.aim_tick = nil
   end
   if not walker.aim_tick or deps.tick - walker.aim_tick >= AIM_TICKS then
@@ -184,10 +194,6 @@ function M.tick(deps)
     walk(deps, entity, walker.heading)
   end
   return nil
-end
-
-function M.on_path_finished_event(e)
-  M.on_path_finished(body.game_deps(), e)
 end
 
 return M

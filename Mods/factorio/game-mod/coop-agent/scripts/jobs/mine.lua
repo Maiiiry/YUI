@@ -2,6 +2,7 @@
 
 local body = require("scripts.body")
 local check = require("scripts.jobs.check")
+local enemies = require("scripts.threat.enemies")
 local holding = require("scripts.jobs.holding")
 local unit_index = require("scripts.unit_index")
 local walker = require("scripts.walker")
@@ -130,6 +131,9 @@ function M.start(deps, job)
       return "target_gone"
     end
   end
+  if enemies.near(deps, entity.surface, target.position) then
+    return "threat"
+  end
   local state = {
     names = names,
     before = entity.get_item_count(args.name),
@@ -156,6 +160,9 @@ local function replace(deps, job, state, entity)
   local target = nearest(entity, state.names)
   if not target then
     return "target_gone"
+  end
+  if enemies.near(deps, entity.surface, target.position) then
+    return "threat"
   end
   choose(deps, job, state, target)
   return nil
