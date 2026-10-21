@@ -85,8 +85,8 @@ export function wireDispatcher(deps: {
   pushTurns: PushTurns;
   pushSocket: PushSocket | null;
   getVocabulary: () => ExpressVocabulary;
-  /** The avatar tools of a window that has an executor; a window without one passes none. */
-  avatarTools?: readonly ClientTool[];
+  /** The tools this window declares beside generate_express; empty outside Tauri. */
+  windowTools?: readonly ClientTool[];
   openQuickControls?: (tab: QuickControlsTab) => void;
   showVoiceError: (reason: string, message?: string) => void;
   appendTurnRecord: (record: TurnRecord | PacerSkipRecord) => void;
@@ -128,7 +128,7 @@ export function wireDispatcher(deps: {
     pushTurns,
     pushSocket,
     getVocabulary,
-    avatarTools,
+    windowTools,
     openQuickControls,
     showVoiceError,
     appendTurnRecord,
@@ -137,7 +137,7 @@ export function wireDispatcher(deps: {
   } = deps;
 
   const applyToolStatus = (status: ToolStatus): void => {
-    if (status.state === "running") surfaces.showTool(status.tool_id ?? "", status.action);
+    if (status.state === "running") surfaces.showTool(status.tool_id ?? "");
     else if (status.state === "done" || status.state === "failed")
       surfaces.finishTool(status.state === "failed");
     else surfaces.hideTool();
@@ -150,7 +150,7 @@ export function wireDispatcher(deps: {
   const turnTools = () =>
     clientToolsUnlessBrokered(
       getEndpoints(),
-      createClientToolRegistry(createClientTools(getVocabulary(), avatarTools)),
+      createClientToolRegistry(createClientTools(getVocabulary(), windowTools)),
     );
 
   const backendCaller = createBackendCaller({

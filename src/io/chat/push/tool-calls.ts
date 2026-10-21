@@ -13,6 +13,7 @@ import {
   type ClientTool,
   type ClientToolRegistry,
   type ClientToolResult,
+  TURN_STOPPED,
   toolFailed,
   toolResultText,
 } from "../tools/client-tools";
@@ -42,12 +43,7 @@ export interface PushToolCallsDeps {
   ): Promise<ClientToolResult>;
   getMaxTurnBytes(): number | undefined;
   /** The state of a call whose tool shows its own status, keyed by the call id. */
-  onStatus?(
-    callId: string,
-    state: "running" | "done" | "failed",
-    toolId: string,
-    action?: string,
-  ): void;
+  onStatus?(callId: string, state: "running" | "done" | "failed", toolId: string): void;
   log: Logger;
 }
 
@@ -77,14 +73,13 @@ export function createPushToolCalls(deps: PushToolCallsDeps): PushToolCalls {
     try {
       // A turn the user stopped while this call waited in the queue still refuses.
       if (deps.isTurnStopped(frame.turn_id)) {
-        answer(frame, "error: turn stopped");
+        answer(frame, TURN_STOPPED);
         return;
       }
-      const action = tool.localStatus ? tool.statusAction?.(frame.arguments) : undefined;
-      if (tool.localStatus) deps.onStatus?.(frame.id, "running", frame.name, action);
+      if (tool.localStatus) deps.onStatus?.(frame.id, "running", frame.name);
       const result = await deps.execute(tool, frame.arguments, signal, frame.id);
       if (tool.localStatus)
-        deps.onStatus?.(frame.id, toolFailed(tool, result) ? "failed" : "done", frame.name, action);
+        deps.onStatus?.(frame.id, toolFailed(tool, result) ? "failed" : "done", frame.name);
       await answerResult(frame, result);
     } finally {
       held.delete(frame.id);
@@ -105,7 +100,7 @@ export function createPushToolCalls(deps: PushToolCallsDeps): PushToolCalls {
         return;
       }
       if (deps.isTurnStopped(frame.turn_id)) {
-        answer(frame, "error: turn stopped");
+        answer(frame, TURN_STOPPED);
         return;
       }
       const abort = new AbortController();

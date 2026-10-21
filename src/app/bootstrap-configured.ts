@@ -4,18 +4,15 @@ import type { AppConfig } from "../config/load";
 import { isChatConfigured } from "../dispatcher/backend/backend-caller";
 import type { Guardrails } from "../dispatcher/core/guardrails";
 import type { Dispatcher } from "../dispatcher/dispatcher";
-import { createBrowserShell } from "../io/browser/browser-shell";
-import { stopBrowserWhenOff } from "../io/browser/browser-switch";
-import { createAvatarTools } from "../io/chat/tools/avatar";
-import { createBrowserTool } from "../io/chat/tools/browser/browser-tool";
 import type { ClientTool } from "../io/chat/tools/client-tools";
+import { createPetWindowTools } from "../io/chat/tools/pet-window-tools";
 import type { ScreenCapturer } from "../io/window/capture/screen-source-provider";
 import { createFrontmostTracker } from "../io/window/frontmost-tracker";
 import type { SummonHotkey } from "../io/window/pet/summon-hotkey";
 import { subscribeOsEvent } from "../io/window/tauri-listen";
 import { createLogger } from "../logger";
 import { mergeScreen } from "../settings/capture/screen-settings";
-import { isMacOS, isTauri, isWindows } from "../tauri-env";
+import { isMacOS, isWindows } from "../tauri-env";
 import { t } from "../ui/i18n";
 import { maybeShowFirstRunHint } from "../ui/notices/first-run-hint";
 import { wireIngressDeadNotice } from "../ui/notices/ingress-dead-notice";
@@ -53,8 +50,8 @@ export interface ConfiguredBootstrapHandles {
   vocabulary: Awaited<ReturnType<typeof wireVocabulary>>;
   /** The seat transitions — the dev perch plays its sit-down through it. */
   sitter: Pick<Sitter, "sitDown">;
-  /** The tools over the avatar executor and the browser tool, empty in a build that creates none. */
-  avatarTools: readonly ClientTool[];
+  /** The tools beside generate_express: browser, and in main the avatar tools; none outside Tauri. */
+  windowTools: readonly ClientTool[];
   /** Cancels the in-flight turn, cuts the outstanding push turns and stops the queued speech. */
   stopTurn: () => void;
   /** Resets the proactive gap, the way a typed submit does. */
@@ -123,28 +120,23 @@ const realFactories: ConfiguredBootstrapFactories = {
     // The stage is wired after the turn core, so the tools read the executor late-bound:
     // null until wireLocomotion has run.
     let locomotion: ReturnType<typeof wireLocomotion> | null = null;
-    const browserShell = !phase1.bound && isTauri() ? createBrowserShell() : null;
-    if (browserShell) register(stopBrowserWhenOff(settings.browserSettings, browserShell));
-    const avatarTools = browserShell
-      ? [
-          ...createAvatarTools(() => locomotion?.getAvatarExecutor() ?? null, {
-            allowRequests: () => settings.screenshotSettings.get().allowRequests,
-            getWindow: () => locomotion?.frame.frameWindow() ?? null,
-            listMonitors: () => locomotion?.frame.listMonitors() ?? Promise.resolve([]),
-            pointsAreLogical: !isWindows(),
-            capturer: phase1.screenCapturer,
-          }),
-          createBrowserTool({
-            shell: browserShell,
-            enabled: () => settings.browserSettings.get().enabled,
-          }),
-        ]
-      : [];
+    const windowTools = createPetWindowTools({
+      bound: phase1.bound === true,
+      getExecutor: () => locomotion?.getAvatarExecutor() ?? null,
+      screen: {
+        allowRequests: () => settings.screenshotSettings.get().allowRequests,
+        getWindow: () => locomotion?.frame.frameWindow() ?? null,
+        listMonitors: () => locomotion?.frame.listMonitors() ?? Promise.resolve([]),
+        pointsAreLogical: !isWindows(),
+        capturer: phase1.screenCapturer,
+      },
+      browserEnabled: () => settings.browserSettings.get().enabled,
+    });
     const core = await wireTurnCore(cfg, phase1, {
       getFrontmost: () => frontmostTracker.get(),
       screenCapturer: phase1.screenCapturer,
       openQuickControls: (tab) => getQuickControls().open(undefined, { tab }),
-      avatarTools,
+      windowTools,
       voicePersistence: {
         get: () => settings.sttSettings.get().enabled,
         set: settings.sttSettings.setEnabled,
@@ -283,7 +275,7 @@ const realFactories: ConfiguredBootstrapFactories = {
       summonHotkey,
       vocabulary,
       sitter: locomotion.sitter,
-      avatarTools,
+      windowTools,
       stopTurn,
       noteInteraction: () => proactiveSource.noteInteraction(),
     };

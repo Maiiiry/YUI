@@ -28,6 +28,9 @@ export interface ClientToolDefinition {
 
 export type ClientToolResult = string | { text: string; images: string[] };
 
+/** The result of a call whose turn the user stopped. */
+export const TURN_STOPPED = "error: turn stopped";
+
 export function toolResultText(result: ClientToolResult): string {
   return typeof result === "string" ? result : result.text;
 }
@@ -53,8 +56,6 @@ export interface ClientTool {
   timeoutResult?(args: Record<string, unknown>): string;
   /** Whether a result reads as a failure; the status pill shows it as failed. Unset: the result starts with `error:`. */
   failed?(result: string): boolean;
-  /** The action the status pill names beside the tool while the call runs. */
-  statusAction?(args: Record<string, unknown>): string | undefined;
   /** Push shows this tool's status from the client's own run and ignores the backend's `tool_status` naming it. */
   localStatus?: true;
 }
@@ -85,10 +86,10 @@ export function createClientToolRegistry(tools: readonly ClientTool[]): ClientTo
   };
 }
 
-/** Every tool a window declares: generate_express, then the tools of a window that has an executor. */
+/** Every tool a window declares: generate_express, then the window tools it is given. */
 export function createClientTools(
   vocab: ExpressVocabulary,
-  avatarTools: readonly ClientTool[] = [],
+  windowTools: readonly ClientTool[] = [],
 ): ClientTool[] {
-  return [createGenerateExpressTool(vocab), ...avatarTools];
+  return [createGenerateExpressTool(vocab), ...windowTools];
 }
