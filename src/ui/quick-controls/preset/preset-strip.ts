@@ -6,14 +6,16 @@
 
 import "./preset.css";
 import type { Logger } from "../../../logger";
+import {
+  type createAgentNotifySettings,
+  ingressUrl,
+} from "../../../settings/backend/agent-notify-settings";
 import type { PresetState } from "../../../settings/preset/active-preset";
-import { isPetWindowLive, type PetWindows } from "../../../settings/preset/pet-windows";
+import { isPresetWindowLive, type PetWindows } from "../../../settings/preset/pet-windows";
 import type { PresetRegistry } from "../../../settings/preset/preset-registry";
 import { t } from "../../i18n";
 import { createPresetManage } from "./preset-manage";
 import { presetScopeText } from "./preset-scope";
-
-const PET_WINDOWS_UI = false;
 
 const DOTS_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>`;
 
@@ -47,9 +49,9 @@ export function createPresetStrip(deps: {
   log: Logger;
   petWindows?: PetWindows;
   boundId?: string | null;
-  windowsUi?: boolean;
+  agentNotifySettings?: ReturnType<typeof createAgentNotifySettings>;
 }): PresetStrip {
-  const { root, registry, log, petWindows, boundId = null, windowsUi = PET_WINDOWS_UI } = deps;
+  const { root, registry, log, petWindows, boundId = null } = deps;
   const stripEl = root.querySelector<HTMLDivElement>(".yui-preset")!;
   const select = stripEl.querySelector<HTMLSelectElement>(".yui-preset__select")!;
   let boundName: HTMLSpanElement | null = null;
@@ -65,7 +67,17 @@ export function createPresetStrip(deps: {
   const stateEl = stripEl.querySelector<HTMLParagraphElement>(".yui-preset__state")!;
   const popEl = stripEl.querySelector<HTMLDivElement>(".yui-preset-pop")!;
   const colsEl = root.querySelector<HTMLDivElement>(".yui-quick__cols")!;
-  const manage = createPresetManage({ el: popEl, registry, log, petWindows, boundId, windowsUi });
+  const manage = createPresetManage({
+    el: popEl,
+    registry,
+    log,
+    petWindows,
+    boundId,
+    presetUrl: (id) => {
+      const settings = deps.agentNotifySettings?.get();
+      return settings?.enabled ? ingressUrl(settings.port, id) : null;
+    },
+  });
   let switching = false;
 
   function render(): void {
@@ -74,7 +86,7 @@ export function createPresetStrip(deps: {
     const state = registry.get();
     select.replaceChildren(
       ...state.list.map((e) => {
-        const open = petWindows?.get().includes(e.id) || isPetWindowLive(e.id);
+        const open = petWindows?.get().includes(e.id) || isPresetWindowLive(e.id);
         const option = new Option(
           open ? t("preset.in_window", { name: e.name }) : e.name,
           e.id,
@@ -161,6 +173,7 @@ export function createPresetStrip(deps: {
   popEl.addEventListener("keydown", handlePopKeydown);
   const unsubscribe = registry.subscribe(render);
   const offWindows = petWindows?.subscribe(render);
+  const offIngressUrl = deps.agentNotifySettings?.subscribe(render);
   render();
 
   return {
@@ -169,6 +182,7 @@ export function createPresetStrip(deps: {
       closeManage(false);
       unsubscribe();
       offWindows?.();
+      offIngressUrl?.();
       select.removeEventListener("change", handleChange);
       manageBtn.removeEventListener("click", handleManageClick);
       popEl.removeEventListener("keydown", handlePopKeydown);

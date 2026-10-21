@@ -3,10 +3,13 @@
   "identifier": "message",
   "description": "message window — a frameless always-on-top surface hosting the speech bubble and the text input; drags, resizes and repositions itself, creates no windows, and opens bubble links in the default browser",
   "windows": [
-    "message"
+    "message",
+    "message-*"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-start-dragging",
     "core:window:allow-set-size",
     "core:window:allow-set-position",

@@ -2,25 +2,32 @@
 import { createPersistedStore, localStorageStore, type PersistedStorage } from "../persisted-store";
 
 export const PET_WINDOWS_KEY = "yui.windows";
-export const LIVE_KEY_PREFIX = "yui.pet-window.";
-export const liveKey = (id: string): string => `${LIVE_KEY_PREFIX}${id}`;
-export function isPetWindowLive(id: string): boolean {
-  return globalThis.localStorage?.getItem(liveKey(id)) === "1";
+export const LIVE_KEY_PREFIX = "yui.live-window.";
+export type PresetWindowKind = "pet" | "settings" | "message";
+export const windowLabel = (kind: PresetWindowKind, id: string): string => `${kind}-${id}`;
+export const liveKey = (label: string): string => `${LIVE_KEY_PREFIX}${label}`;
+export function isWindowLive(label: string): boolean {
+  return globalThis.localStorage?.getItem(liveKey(label)) === "1";
 }
-export function setPetWindowLive(id: string): void {
-  globalThis.localStorage?.setItem(liveKey(id), "1");
+export function isPresetWindowLive(id: string): boolean {
+  return (["pet", "settings", "message"] as const).some((kind) =>
+    isWindowLive(windowLabel(kind, id)),
+  );
 }
-export function clearPetWindowLive(id: string): void {
-  globalThis.localStorage?.removeItem(liveKey(id));
+export function setWindowLive(label: string): void {
+  globalThis.localStorage?.setItem(liveKey(label), "1");
 }
-export function clearStaleLiveKeys(existingIds: string[]): void {
+export function clearWindowLive(label: string): void {
+  globalThis.localStorage?.removeItem(liveKey(label));
+}
+export function clearStaleLiveKeys(existingLabels: string[]): void {
   const storage = globalThis.localStorage;
   if (!storage) return;
   for (let i = storage.length - 1; i >= 0; i--) {
     const key = storage.key(i);
     if (
       key?.startsWith(LIVE_KEY_PREFIX) &&
-      !existingIds.includes(key.slice(LIVE_KEY_PREFIX.length))
+      !existingLabels.includes(key.slice(LIVE_KEY_PREFIX.length))
     )
       storage.removeItem(key);
   }

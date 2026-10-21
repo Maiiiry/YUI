@@ -1,13 +1,7 @@
-/**
- * Settings pop-out window opener + cross-window settings sync.
- *
- * openSettingsWindow branches on injected env for Tauri/browser paths only (pure, testable).
- * createSettingsWindowOpener wires the real implementation — Tauri: WebviewWindow("settings"),
- * else: window.open. WebviewWindow dynamic-imported only within Tauri branch so vitest/browser
- * do not load the module.
- */
+/** Settings opens the main or bound companion window and shares storage change notifications. */
 
 import { createLogger } from "../../../logger";
+import { windowLabel } from "../../../settings/preset/pet-windows";
 import { isTauri } from "../../../tauri-env";
 
 const log = createLogger("settings-window");
@@ -34,10 +28,13 @@ export function openSettingsWindow(env: SettingsWindowEnv): void {
 }
 
 /** If already open, focus and show; else create new. No step throws. */
-async function openTauriSettingsWindow(): Promise<void> {
+async function openTauriSettingsWindow(boundId?: string | null): Promise<void> {
+  const label = boundId == null ? SETTINGS_LABEL : windowLabel("settings", boundId);
+  const url =
+    boundId == null ? SETTINGS_URL : `${SETTINGS_URL}?preset=${encodeURIComponent(boundId)}`;
   try {
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    const existing = await WebviewWindow.getByLabel(SETTINGS_LABEL);
+    const existing = await WebviewWindow.getByLabel(label);
     if (existing) {
       try {
         await existing.show();
@@ -48,8 +45,8 @@ async function openTauriSettingsWindow(): Promise<void> {
       return;
     }
     // Window params mirror src-tauri/src/tray.rs open_settings — keep both in sync.
-    const win = new WebviewWindow(SETTINGS_LABEL, {
-      url: SETTINGS_URL,
+    const win = new WebviewWindow(label, {
+      url,
       title: SETTINGS_TITLE,
       width: 480,
       height: 660,
@@ -62,17 +59,21 @@ async function openTauriSettingsWindow(): Promise<void> {
     win.once("tauri://error", (e) =>
       log.error("settings_window_create_error", { error: String(e) }),
     );
-    win.once("tauri://destroyed", () =>
-      log.info("settings_window_closed", { label: SETTINGS_LABEL }),
-    );
+    win.once("tauri://destroyed", () => log.info("settings_window_closed", { label }));
   } catch (err) {
     log.error("settings_window_open_failed", { error: String(err) });
   }
 }
 
-function openBrowserSettingsWindow(): void {
+function openBrowserSettingsWindow(boundId?: string | null): void {
   try {
-    window.open(`/${SETTINGS_URL}`, "yui-settings", "width=480,height=660");
+    window.open(
+      boundId == null
+        ? `/${SETTINGS_URL}`
+        : `/${SETTINGS_URL}?preset=${encodeURIComponent(boundId)}`,
+      boundId == null ? "yui-settings" : `yui-${windowLabel("settings", boundId)}`,
+      "width=480,height=660",
+    );
   } catch (err) {
     log.warn("settings_window_browser_open_failed", { error: String(err) });
   }
@@ -109,12 +110,12 @@ export function closeSettingsWindow(): void {
 }
 
 /** Return opener with wired side effects. Branches to Tauri/browser per call. */
-export function createSettingsWindowOpener(): () => void {
+export function createSettingsWindowOpener(boundId?: string | null): () => void {
   return () => {
     openSettingsWindow({
       isTauri: isTauri(),
-      createTauriWindow: () => void openTauriSettingsWindow(),
-      openBrowserWindow: openBrowserSettingsWindow,
+      createTauriWindow: () => void openTauriSettingsWindow(boundId),
+      openBrowserWindow: () => openBrowserSettingsWindow(boundId),
     });
   };
 }

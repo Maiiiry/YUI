@@ -8,7 +8,6 @@ import type { UserInputSource } from "../../dispatcher/sources/user-input-source
 import type { SettingsBridge } from "../../io/bridge/settings-bridge";
 
 export function wireHelpGuide(deps: {
-  bound?: boolean;
   userInput: Pick<UserInputSource, "submitGuide">;
   bridge: Pick<SettingsBridge, "onHelpGuide">;
   register: (teardown: () => void) => void;
@@ -22,7 +21,7 @@ export function wireHelpGuide(deps: {
     deps.userInput.submitGuide(guide, text);
     noteInteraction();
   };
-  if (!deps.bound) deps.register(deps.bridge.onHelpGuide(({ guide, text }) => ask(guide, text)));
+  deps.register(deps.bridge.onHelpGuide(({ guide, text }) => ask(guide, text)));
   return {
     ask,
     bindInteraction: (fn) => {

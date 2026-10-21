@@ -20,9 +20,13 @@ export interface PersistedStorage<T> {
 /**
  * localStorage-backed adapter. Gracefully no-ops where localStorage is absent. A per-preset key
  * resolves to the active preset's copy once, when the adapter is built.
+ * `{ resolve: false }` uses an already-resolved key without applying the active preset namespace.
  */
-export function localStorageStore<T>(storageKey: string): PersistedStorage<T> {
-  const key = resolvePresetKey(storageKey);
+export function localStorageStore<T>(
+  storageKey: string,
+  options?: { resolve?: boolean },
+): PersistedStorage<T> {
+  const key = options?.resolve === false ? storageKey : resolvePresetKey(storageKey);
   return {
     load() {
       try {

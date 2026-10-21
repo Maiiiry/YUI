@@ -1,7 +1,7 @@
 //! Loopback HTTP ingress — receives lifecycle signals from external coding-agent
 //! hooks (task done, or the agent needs the user's input) and opaque `signals`
 //! batches from the remote n8n workflow, then re-emits both as Tauri events into
-//! the frontend dispatcher.
+//! the frontend dispatcher; `/presets/<id>/` delivers to `pet-<id>`.
 //!
 //! Also serves the avatar RPC surface (`/avatar/*`): body state, perch targets, and
 //! semantic movement commands. Those live in the webview, so each request is bridged
@@ -9,33 +9,68 @@
 //!
 //! Binds loopback only; no auth (single-user desktop).
 
-use crate::os_event_watcher::epoch_ms;
 use avatar_rpc::spawn_avatar_request;
 use payload::{
-    cap_detail, cap_summary, parse_avatar_request, parse_request, parse_signals_request,
     rejected_level, AgentEventPayload, SignalsPayload, AGENT_INBOX_CHANNEL, BODY_CEILING_BYTES,
     INGRESS_DEAD_CHANNEL, SIGNALS_INBOX_CHANNEL,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use route::{dispatch, Dispatch, RouteKind};
+use std::collections::HashSet;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub(crate) mod avatar_rpc;
 mod guard;
 mod payload;
+mod route;
+
+/// Preset ids main publishes for distinguishing closed windows from unknown presets.
+#[derive(Default)]
+pub struct PresetIds(Mutex<HashSet<String>>);
+impl PresetIds {
+    fn replace(&self, label: &str, ids: Vec<String>) -> Result<(), String> {
+        if label != INGRESS_WINDOW {
+            log::warn!("preset_ids_sync_refused reason=foreign_window label={label}");
+            return Err("only main may sync preset ids".into());
+        }
+        if ids.iter().any(String::is_empty) {
+            log::warn!("preset_ids_sync_refused reason=empty_id");
+            return Err("preset ids must not be empty".into());
+        }
+        let ids: HashSet<_> = ids.into_iter().collect();
+        let count = ids.len();
+        *self.0.lock().map_err(|e| e.to_string())? = ids;
+        log::debug!("preset_ids_synced count={count}");
+        Ok(())
+    }
+}
+
+/// Replaces the known preset ids after verifying the invoking window is main.
+#[tauri::command]
+pub fn sync_preset_ids(
+    window: tauri::Window,
+    state: State<'_, PresetIds>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    state.replace(window.label(), ids)
+}
 
 // ─── Emit helper ──────────────────────────────────────────────────────────────
 
-fn emit_agent_event(app: &AppHandle, payload: AgentEventPayload) {
-    let result = app.emit_to(INGRESS_WINDOW, AGENT_INBOX_CHANNEL, payload);
+fn emit_agent_event(app: &AppHandle, label: &str, payload: AgentEventPayload) {
+    let result = app.emit_to(label, AGENT_INBOX_CHANNEL, payload);
     if let Err(e) = &result {
         log::warn!("agent_ingress_emit_failed error={e}");
     }
 }
 
-fn emit_signals_event(app: &AppHandle, payload: SignalsPayload) {
-    let result = app.emit_to(INGRESS_WINDOW, SIGNALS_INBOX_CHANNEL, payload);
+fn emit_signals_event(app: &AppHandle, label: &str, payload: SignalsPayload) {
+    let result = app.emit_to(label, SIGNALS_INBOX_CHANNEL, payload);
     if let Err(e) = &result {
         log::warn!("agent_ingress_signals_emit_failed error={e}");
     }
@@ -64,69 +99,61 @@ fn read_body(request: &mut tiny_http::Request) -> Option<String> {
     String::from_utf8(body_vec).ok()
 }
 
+fn route_request(
+    request: &mut tiny_http::Request,
+    is_known: impl Fn(&str) -> Result<bool, u16>,
+    window_exists: impl Fn(&str) -> bool,
+) -> Result<Dispatch, u16> {
+    let method = request.method().to_string();
+    let url = request.url().to_string();
+    if let Some(code) = guard::refuse(request.headers()) {
+        log::warn!("agent_ingress_refused code={code} method={method} url={url}");
+        return Err(code);
+    }
+    let body = read_body(request).ok_or_else(|| {
+        log::warn!("agent_ingress_body_read_failed url={url}");
+        400u16
+    })?;
+    dispatch(&method, &url, &body, is_known, window_exists)
+}
+
 fn handle_request(app: &AppHandle, mut request: tiny_http::Request) {
     let method = request.method().to_string();
     let url = request.url().to_string();
-
-    if let Some(code) = guard::refuse(request.headers()) {
-        let _ = request.respond(tiny_http::Response::from_string("").with_status_code(code));
-        log::warn!("agent_ingress_refused code={code} method={method} url={url}");
-        return;
-    }
-
-    let body = match read_body(&mut request) {
-        Some(b) => b,
-        None => {
-            let _ = request.respond(tiny_http::Response::from_string("").with_status_code(400u16));
-            log::warn!("agent_ingress_body_read_failed url={url}");
-            return;
-        }
-    };
-
-    let path_only = url.split('?').next().unwrap_or(&url);
-    if path_only.starts_with("/avatar/") {
-        match parse_avatar_request(&method, &url, &body) {
-            Ok(route) => spawn_avatar_request(app, route, request),
-            Err(code) => {
-                let _ =
-                    request.respond(tiny_http::Response::from_string("").with_status_code(code));
+    let result = route_request(
+        &mut request,
+        |id| {
+            Ok(app
+                .state::<PresetIds>()
+                .0
+                .lock()
+                .map_err(|_| 503u16)?
+                .contains(id))
+        },
+        |label| app.get_webview_window(label).is_some(),
+    );
+    let Dispatch { label, kind } = match result {
+        Ok(route) => route,
+        Err(code) => {
+            let _ = request.respond(tiny_http::Response::from_string("").with_status_code(code));
+            if code != 421 && code != 403 {
                 log::log!(
                     rejected_level(code),
                     "agent_ingress_rejected code={code} method={method} url={url}"
                 );
             }
+            return;
         }
-        return;
-    }
-    let result = match path_only {
-        "/agent-event" => parse_request(&method, &url, &body).map(|payload| {
-            let payload = cap_detail(cap_summary(payload));
-            emit_agent_event(app, payload);
-        }),
-        "/signals" => parse_signals_request(&method, &url, &body).and_then(|request| {
-            let payload = SignalsPayload {
-                signals: request.signals,
-                envelope: request.envelope.ok_or(400u16)?,
-                ts: epoch_ms(),
-            };
-            emit_signals_event(app, payload);
-            Ok(())
-        }),
-        _ => Err(400),
     };
-
-    match result {
-        Ok(()) => {
-            let _ = request.respond(tiny_http::Response::from_string("").with_status_code(200u16));
+    match kind {
+        RouteKind::Avatar(route) => {
+            spawn_avatar_request(app, &label, route, request);
+            return;
         }
-        Err(code) => {
-            let _ = request.respond(tiny_http::Response::from_string("").with_status_code(code));
-            log::log!(
-                rejected_level(code),
-                "agent_ingress_rejected code={code} method={method} url={url}"
-            );
-        }
+        RouteKind::AgentEvent(payload) => emit_agent_event(app, &label, payload),
+        RouteKind::Signals(payload) => emit_signals_event(app, &label, payload),
     }
+    let _ = request.respond(tiny_http::Response::from_string("").with_status_code(200u16));
 }
 
 // ─── Background listener ──────────────────────────────────────────────────────
@@ -175,7 +202,7 @@ fn claim_and_bind(
     Some(result)
 }
 
-/// The webview that owns the ingress; every ingress event is delivered to it alone.
+/// Main owns the bare routes and ingress lifecycle notifications.
 const INGRESS_WINDOW: &str = "main";
 
 /// Spawns the loopback HTTP listener on the given port.
@@ -228,6 +255,60 @@ pub fn start_agent_ingress(app: tauri::AppHandle, port: u16) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sync_ids_refuses_foreign_callers_and_invalid_ids() {
+        let state = PresetIds::default();
+        assert!(state.replace("pet-a", vec!["a".into()]).is_err());
+        assert!(state.replace("main", vec![String::new()]).is_err());
+        assert!(state.0.lock().unwrap().is_empty());
+        state.replace("main", vec!["a".into()]).unwrap();
+        state.replace("main", vec!["b".into()]).unwrap();
+        assert_eq!(
+            *state.0.lock().unwrap(),
+            std::collections::HashSet::from(["b".into()])
+        );
+    }
+    #[test]
+    fn refused_request_never_reads_registry_or_checks_windows() {
+        let mut request = tiny_http::TestRequest::new()
+            .with_method(tiny_http::Method::Post)
+            .with_path("/presets/x/signals")
+            .with_header(tiny_http::Header::from_bytes("Host", "evil.example:8770").unwrap())
+            .with_body(r#"{"signals":[],"envelope":{}}"#)
+            .into();
+        assert_eq!(
+            route_request(
+                &mut request,
+                |_| panic!("must not read registry"),
+                |_| panic!("must not check windows")
+            )
+            .unwrap_err(),
+            421
+        );
+    }
+    #[test]
+    fn loopback_request_reaches_window_check_without_reading_registry() {
+        let mut request = tiny_http::TestRequest::new()
+            .with_method(tiny_http::Method::Post)
+            .with_path("/presets/x/signals")
+            .with_header(tiny_http::Header::from_bytes("Host", "127.0.0.1:8770").unwrap())
+            .with_body(r#"{"signals":[],"envelope":{}}"#)
+            .into();
+        let checked = std::cell::Cell::new(false);
+        let routed = route_request(
+            &mut request,
+            |_| panic!("existing windows need no registry"),
+            |label| {
+                assert_eq!(label, "pet-x");
+                checked.set(true);
+                true
+            },
+        )
+        .unwrap();
+        assert!(checked.get());
+        assert_eq!(routed.label, "pet-x");
+    }
 
     // ── Bind retry ────────────────────────────────────────────────────────────
 

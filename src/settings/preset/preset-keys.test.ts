@@ -3,6 +3,7 @@ import { resolveStorageKey } from "./preset-keys";
 
 describe("resolveStorageKey", () => {
   it.each([
+    ["yui.message-window", "yui.ab12cd34.message-window"],
     ["yui.endpoints", "yui.ab12cd34.endpoints"],
     ["yui.chat-key", "yui.ab12cd34.chat-key"],
     ["yui.chat-id", "yui.ab12cd34.chat-id"],

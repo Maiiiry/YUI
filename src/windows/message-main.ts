@@ -12,6 +12,7 @@ import "../ui/message/message-window.css";
 import { createDisposers } from "../app/disposers";
 import { wireMessageSurfaceOps } from "../app/message/wire-message-surface-ops";
 import { startDragging, wireTauriWindow } from "../app/message/wire-message-tauri-window";
+import { bootCompanion } from "../app/pet-windows/companion-window";
 import { wirePresetSwitch } from "../app/settings/wire-preset";
 import { createMirroredDelegations } from "../io/bridge/delegations/delegations-bridge";
 import { createMessageBridge } from "../io/bridge/message/message-bridge";
@@ -29,7 +30,6 @@ import {
   localStorageMessageWindowStorage,
 } from "../settings/panels/message-window-settings";
 import { createFlagSettings, localStorageStore } from "../settings/persisted-store";
-import { createPresetRegistry } from "../settings/preset/preset-registry";
 import { isTauri } from "../tauri-env";
 import { createDelegationChip } from "../ui/chips/delegation-chip";
 import { reloadFromStorage as reloadLocale } from "../ui/i18n";
@@ -47,6 +47,13 @@ async function bootstrap(): Promise<void> {
     throw new Error("#app mount point not found");
   }
 
+  const disposers = createDisposers();
+  const {
+    boundId,
+    registry: presetRegistry,
+    alive,
+  } = await bootCompanion("message", disposers, log);
+  if (!alive) return;
   const messageWindowSettings = createMessageWindowSettings({
     storage: localStorageMessageWindowStorage(),
   });
@@ -58,10 +65,10 @@ async function bootstrap(): Promise<void> {
   const settingsBridge = createSettingsBridge(undefined, { windowKind: "message" });
 
   // The pet window reloads into another preset; this window reloads with it.
-  const presetRegistry = createPresetRegistry();
   const disposePresetSwitch = wirePresetSwitch({
     registry: presetRegistry,
     bridge: settingsBridge,
+    boundId,
   });
 
   // The socket lives in the pet window; this one mirrors its state, its delegations list and its reasoning.
@@ -119,17 +126,7 @@ async function bootstrap(): Promise<void> {
   const unlistenSettings = settingsBridge.onSettingsChanged(reloadShared);
   window.addEventListener("focus", reloadShared);
 
-  const disposeWindowWiring = isTauri()
-    ? await wireTauriWindow(surfaces.el, messageWindowSettings)
-    : () => {};
-
-  // A window created after the turn began has no limits and no busy state until it asks.
-  // Sent after the window wiring so the surface listener's own registration hop has landed.
-  bridge.emitControl({ op: "ready" });
-
   // The bag drains LIFO, so these register in the reverse of the order they run.
-  const disposers = createDisposers();
-  disposers.register(() => presetRegistry.dispose());
   disposers.register(disposePresetSwitch);
   disposers.register(() => bubblePersistSettings.dispose());
   disposers.register(() => messageWindowSettings.dispose());
@@ -146,8 +143,14 @@ async function bootstrap(): Promise<void> {
   disposers.register(unlistenSettings);
   disposers.register(() => window.removeEventListener("focus", reloadShared));
   disposers.register(detachSummonKey);
-  disposers.register(disposeWindowWiring);
   window.addEventListener("beforeunload", disposers.dispose);
+  const disposeWindowWiring = isTauri()
+    ? await wireTauriWindow(surfaces.el, messageWindowSettings, disposers.isDisposed)
+    : () => {};
+  disposers.register(disposeWindowWiring);
+  if (disposers.isDisposed()) return;
+  // The surface listener receives the handshake after the native window wiring settles.
+  bridge.emitControl({ op: "ready" });
 }
 
 void bootstrap().catch((error) => {

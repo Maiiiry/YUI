@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger";
-import { createPetWindows, isPetWindowLive } from "../../settings/preset/pet-windows";
+import { createPetWindows, isPresetWindowLive } from "../../settings/preset/pet-windows";
 import { wireBoundWindow } from "./wire-bound-window";
 
 beforeEach(() => localStorage.clear());
@@ -22,7 +22,7 @@ it.each([
     petWindows,
     bridge: {
       emitPetWindowsChanged: () => {
-        expect(isPetWindowLive("a")).toBe(false);
+        expect(isPresetWindowLive("a")).toBe(false);
         calls.push("emit");
         return new Promise<void>((r) => {
           sent = r;
@@ -40,12 +40,12 @@ it.each([
     log: createLogger("test"),
   });
   if (initiallyOpen) {
-    expect(isPetWindowLive("a")).toBe(true);
+    expect(isPresetWindowLive("a")).toBe(true);
     petWindows.close("other");
     expect(calls).toEqual([]);
     petWindows.close("a");
   }
-  expect(calls).toEqual(["stores", "emit"]);
+  await vi.waitFor(() => expect(calls).toEqual(["stores", "emit"]));
   sent();
   await vi.waitFor(() => expect(calls).toEqual(["stores", "emit", "sync", "close"]));
   off();
@@ -83,7 +83,7 @@ it.each([true, false])("clears live state on pagehide only in browser (Tauri: %s
     log: createLogger("test"),
   });
   window.dispatchEvent(new Event("pagehide"));
-  expect(isPetWindowLive("a")).toBe(tauri);
+  expect(isPresetWindowLive("a")).toBe(tauri);
   off();
 });
 
@@ -107,4 +107,38 @@ it("still closes when lifecycle cleanup throws", async () => {
     preset: "a",
     error: "Error: sync teardown",
   });
+});
+
+it.each([
+  false,
+  true,
+])("preserves companion deletion guards after timeout or a failed close (failure: %s)", async (failed) => {
+  vi.useFakeTimers();
+  vi.stubGlobal("__TAURI_INTERNALS__", {});
+  localStorage.setItem("yui.live-window.settings-a", "1");
+  const calls: string[] = [];
+  const log = createLogger("test"),
+    warn = vi.spyOn(log, "warn");
+  wireBoundWindow({
+    boundId: "a",
+    petWindows: createPetWindows(),
+    bridge: { emitPetWindowsChanged: async () => {} },
+    closeCompanions: async () => {
+      calls.push("companions");
+      if (failed) throw Error("close refused");
+    },
+    disposeStores: () => {
+      calls.push("stores");
+    },
+    disposeSync: () => {},
+    close: () => {
+      calls.push("close");
+    },
+    log,
+  });
+  expect(calls).toEqual(["companions"]);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(calls).toEqual(["companions", "stores", "close"]);
+  expect(localStorage.getItem("yui.live-window.settings-a")).toBe("1");
+  expect(warn).toHaveBeenCalledWith("companion_close_timeout", { preset: "a" });
 });

@@ -1,37 +1,48 @@
 /** Application stores stop before the live key clears, so preset deletion waits for their last write. */
 import type { SettingsBridge } from "../../io/bridge/settings-bridge";
+import { closeCompanions } from "../../io/window/openers/companion-windows";
 import type { Logger } from "../../logger";
 import {
-  clearPetWindowLive,
+  clearWindowLive,
+  isWindowLive,
   type PetWindows,
-  setPetWindowLive,
+  setWindowLive,
+  windowLabel,
 } from "../../settings/preset/pet-windows";
 import { isTauri } from "../../tauri-env";
+
+const COMPANION_CLOSE_WAIT_MS = 1000;
+const COMPANION_POLL_MS = 50;
 
 export function wireBoundWindow(deps: {
   boundId: string;
   petWindows: PetWindows;
   bridge: Pick<SettingsBridge, "emitPetWindowsChanged">;
+  closeCompanions?: (id: string) => Promise<void>;
   disposeStores: () => void;
   disposeSync: () => void;
   close: () => void | Promise<void>;
   log: Logger;
 }): () => void {
-  const onPageHide = () => clearPetWindowLive(deps.boundId);
+  const onPageHide = () => clearWindowLive(windowLabel("pet", deps.boundId));
   const browser = !isTauri();
   if (browser) window.addEventListener("pagehide", onPageHide);
   let closing = false;
-  setPetWindowLive(deps.boundId);
+  setWindowLive(windowLabel("pet", deps.boundId));
   const evaluate = () => {
     if (closing || deps.petWindows.get().includes(deps.boundId)) return;
     closing = true;
     void (async () => {
+      void (deps.closeCompanions ?? closeCompanions)(deps.boundId).catch((error) =>
+        deps.log.warn("companion_close_failed", { preset: deps.boundId, error: String(error) }),
+      );
+      await waitForCompanions(deps.boundId, deps.log);
       try {
         deps.disposeStores();
       } catch (error) {
         deps.log.warn("pet_window_dispose_failed", { preset: deps.boundId, error: String(error) });
       }
-      clearPetWindowLive(deps.boundId);
+      clearWindowLive(windowLabel("pet", deps.boundId));
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([
@@ -60,6 +71,17 @@ export function wireBoundWindow(deps: {
   evaluate();
   return () => {
     off();
+    clearWindowLive(windowLabel("pet", deps.boundId));
     if (browser) window.removeEventListener("pagehide", onPageHide);
   };
+}
+
+async function waitForCompanions(id: string, log: Logger): Promise<void> {
+  const live = () =>
+    (["settings", "message"] as const).some((kind) => isWindowLive(windowLabel(kind, id)));
+  for (let elapsed = 0; elapsed < COMPANION_CLOSE_WAIT_MS; elapsed += COMPANION_POLL_MS) {
+    if (!live()) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, COMPANION_POLL_MS));
+  }
+  if (live()) log.warn("companion_close_timeout", { preset: id });
 }

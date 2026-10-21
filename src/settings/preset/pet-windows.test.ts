@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from "vitest";
 import {
-  clearPetWindowLive,
   clearStaleLiveKeys,
+  clearWindowLive,
   createPetWindows,
-  isPetWindowLive,
+  isPresetWindowLive,
   readOpenPetWindowIds,
-  setPetWindowLive,
+  setWindowLive,
 } from "./pet-windows";
 
 beforeEach(() => localStorage.clear());
@@ -36,21 +36,25 @@ it.each(["not json", "null", '{"open":12}'])("rejects malformed storage %s", (ra
   expect(readOpenPetWindowIds()).toEqual([]);
 });
 it("keeps independent live keys", () => {
-  setPetWindowLive("a");
-  setPetWindowLive("b");
-  clearPetWindowLive("a");
-  expect(isPetWindowLive("a")).toBe(false);
-  expect(isPetWindowLive("b")).toBe(true);
+  setWindowLive("pet-a");
+  setWindowLive("pet-b");
+  clearWindowLive("pet-a");
+  expect(isPresetWindowLive("a")).toBe(false);
+  expect(isPresetWindowLive("b")).toBe(true);
 });
 
 it("clears only stale live keys while iteration remains stable", () => {
-  setPetWindowLive("gone-a");
-  setPetWindowLive("gone-b");
-  setPetWindowLive("present");
+  setWindowLive("pet-gone-a");
+  setWindowLive("pet-gone-b");
+  setWindowLive("pet-present");
+  setWindowLive("settings-present");
+  setWindowLive("message-gone");
   localStorage.setItem("yui.windows", JSON.stringify({ open: ["present"] }));
-  clearStaleLiveKeys(["present"]);
-  expect(isPetWindowLive("gone-a")).toBe(false);
-  expect(isPetWindowLive("gone-b")).toBe(false);
-  expect(isPetWindowLive("present")).toBe(true);
+  clearStaleLiveKeys(["pet-present", "settings-present"]);
+  expect(isPresetWindowLive("gone-a")).toBe(false);
+  expect(isPresetWindowLive("gone-b")).toBe(false);
+  expect(isPresetWindowLive("present")).toBe(true);
+  expect(localStorage.getItem("yui.live-window.settings-present")).toBe("1");
+  expect(localStorage.getItem("yui.live-window.message-gone")).toBeNull();
   expect(readOpenPetWindowIds()).toEqual(["present"]);
 });

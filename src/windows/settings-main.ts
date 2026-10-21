@@ -7,6 +7,8 @@
  */
 
 import "../styles.css";
+import { createDisposers } from "../app/disposers";
+import { bootCompanion } from "../app/pet-windows/companion-window";
 import { wireSettingsWindow } from "../app/settings-window/wire-settings-window";
 import { excludeOwnOriginFromCorsFetch } from "../io/window/own-origin-fetch";
 import { createLogger, initLogger } from "../logger";
@@ -21,7 +23,10 @@ async function bootstrap(): Promise<void> {
     throw new Error("#app mount point not found");
   }
 
-  await wireSettingsWindow({ app });
+  const lifecycle = createDisposers();
+  const companion = await bootCompanion("settings", lifecycle, log);
+  if (!companion.alive) return;
+  await wireSettingsWindow({ app, lifecycle, presetRegistry: companion.registry });
 }
 
 void bootstrap().catch((error) => {

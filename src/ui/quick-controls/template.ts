@@ -40,6 +40,7 @@ function hintDotHtml(textKey: string): string {
 interface PanelHtmlOptions {
   isWindow: boolean;
   showPopOut?: boolean;
+  showVoiceInput?: boolean;
   /** Whether the window-only context-occupancy readout renders. */
   hasSession: boolean;
   switchRows: readonly SwitchRow[];
@@ -66,6 +67,7 @@ export function buildPanelHtml(o: PanelHtmlOptions): string {
   const {
     isWindow,
     showPopOut,
+    showVoiceInput = true,
     hasSession,
     switchRows,
     showScreen,
@@ -95,7 +97,8 @@ export function buildPanelHtml(o: PanelHtmlOptions): string {
                   min: 1024,
                   max: 65535,
                   hintKey: "reactions.restart_hint",
-                })
+                }) +
+                `<div class="yui-stack yui-input-row"><span class="yui-input-row__label">${t("reactions.url_label")}</span><span class="yui-row__sub">${t("reactions.url_sub")}</span><code id="yui-ingress-url" class="yui-quick__ingress-url"></code><span class="yui-row__sub">${t("reactions.restart_hint")}</span></div>`
               : ""
           }`,
       )
@@ -354,7 +357,9 @@ ${panelOpenHtml("input")}
         </div>${showBrowser ? browserSectionHtml() : ""}
         <div class="yui-sec">
           <div class="yui-group">
-            <div class="yui-row">
+            ${
+              showVoiceInput
+                ? `<div class="yui-row">
               <div class="yui-row__main">
                 <span class="yui-row__label">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -368,7 +373,9 @@ ${panelOpenHtml("input")}
                 <span class="yui-row__sub">${t("voice_input.sub")}</span>
               </div>
               <button class="yui-switch yui-voice-switch" type="button" role="switch" aria-checked="false" aria-label="${t("voice_input.label")}"></button>
-            </div>${switchRowsHtml("input")}
+            </div>`
+                : ""
+            }${switchRowsHtml("input")}
             <div class="yui-gain">
               <div class="yui-gain__head">
                 <span class="yui-gain__label">${t("voice_input.silence_label")}</span>
