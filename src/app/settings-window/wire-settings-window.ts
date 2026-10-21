@@ -20,6 +20,7 @@ import { subscribe as subscribeLocale, t } from "../../ui/i18n";
 import { createQuickControls } from "../../ui/quick-controls/quick-controls";
 import { wireSettingsWindowSync } from "../cross-window/wire-cross-window";
 import { createDisposers } from "../disposers";
+import { wirePetWindowsSync } from "../pet-windows/wire-pet-windows-sync";
 import { quickControlsConfigDefaults } from "../settings/config-defaults";
 import { devKeyFallback } from "../settings/dev-key-fallback";
 import { createWindowStores } from "../settings/window-stores";
@@ -35,7 +36,8 @@ export async function wireSettingsWindow(deps: { app: HTMLElement }): Promise<vo
   const { app } = deps;
   const { register, dispose } = createDisposers();
 
-  const { settingsStores, conversationStores, presetRegistry } = createWindowStores(register);
+  const { settingsStores, conversationStores, presetRegistry, petWindows } =
+    createWindowStores(register);
   const {
     screenshotSettings,
     idleThrottleSettings,
@@ -258,6 +260,7 @@ export async function wireSettingsWindow(deps: { app: HTMLElement }): Promise<vo
       bubblePersistSettings,
       messageWindowSettings,
       presetRegistry,
+      petWindows,
     });
   };
 
@@ -286,6 +289,7 @@ export async function wireSettingsWindow(deps: { app: HTMLElement }): Promise<vo
   const disposePresetSwitch = wirePresetSwitch({ registry: presetRegistry, bridge });
 
   // Drains LIFO, so registered in reverse of the teardown order.
+  register(wirePetWindowsSync({ petWindows, bridge }));
   register(disposePresetSwitch);
   register(() => voiceInputStatus.dispose());
   register(() => speakerSelection.dispose());

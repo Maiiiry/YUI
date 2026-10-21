@@ -22,6 +22,7 @@ import { wireSettingsReload } from "../app/cross-window/wire-window-sync";
 import { wireCspViolationLog } from "../app/csp-violation";
 import { wireDevGlobals } from "../app/dev/wire-dev-globals";
 import { createDisposers } from "../app/disposers";
+import { createPetWindowRole } from "../app/pet-windows/pet-window-role";
 import { createWindowStores } from "../app/settings/window-stores";
 import { wireAvatarSelection } from "../app/settings/wire-avatar";
 import { createPetConfig, wireConfigReload, wireConfigWatch } from "../app/settings/wire-config";
@@ -47,6 +48,7 @@ import { createDevtoolsWindowOpener } from "../io/window/openers/devtools-window
 import { createSettingsWindowOpener } from "../io/window/openers/settings-window";
 import { excludeOwnOriginFromCorsFetch } from "../io/window/own-origin-fetch";
 import { createLogger, initLogger } from "../logger";
+import { readBoundPresetId } from "../settings/preset/bound-preset";
 import { createStatusPill } from "../ui/chips/status-pill";
 import { createVoiceInputStatus } from "../ui/chips/voice-input-status";
 import { showBootError } from "../ui/notices/boot-error";
@@ -60,6 +62,8 @@ interface BootstrapHandle {
 }
 
 async function bootstrap(): Promise<BootstrapHandle> {
+  const boundId = readBoundPresetId();
+  const bound = boundId !== null;
   excludeOwnOriginFromCorsFetch();
   await initLogger();
   const app = document.querySelector<HTMLDivElement>("#app");
@@ -72,7 +76,10 @@ async function bootstrap(): Promise<BootstrapHandle> {
   // (reverse of registration) — a single hot.dispose() registration for the whole module, so
   // a later resource can never silently displace an earlier one's teardown.
   const disposers = createDisposers();
-  const { register, dispose, isDisposed } = disposers;
+  const { register, dispose: disposeWindow, isDisposed } = disposers;
+  const role = createPetWindowRole({ boundId, disposeWindow, log });
+  if (!role || isDisposed()) return { dispose: disposeWindow };
+  const { dispose } = role;
   if (import.meta.env.DEV) {
     import.meta.hot?.dispose(dispose);
   }
@@ -89,7 +96,10 @@ async function bootstrap(): Promise<BootstrapHandle> {
   const root = app.querySelector<HTMLDivElement>(".yui-root")!;
   const stage = root.querySelector<HTMLDivElement>(".yui-stage")!;
 
-  const { settingsStores, conversationStores, presetRegistry } = createWindowStores(register);
+  const { settingsStores, conversationStores, presetRegistry, petWindows } = createWindowStores(
+    register,
+    role,
+  );
   const petConfig = createPetConfig({ ...settingsStores, log });
   const config = petConfig.config;
   const bedSceneHold = createBedSceneHold();
@@ -115,6 +125,7 @@ async function bootstrap(): Promise<BootstrapHandle> {
   register(() => statusPill.dispose());
 
   const { surfaces, local, remote, getMode } = wireMessageSurfaces({
+    bound,
     mount: root,
     tool: statusPill,
     bubblePersistSettings: settingsStores.bubblePersistSettings,
@@ -143,6 +154,7 @@ async function bootstrap(): Promise<BootstrapHandle> {
     bridge: windowBridge,
     dispose: disposeCrossWindowSync,
   } = wireCrossWindowSync({
+    bound,
     renderer,
     voiceInputStatus,
     stores: settingsStores,
@@ -176,11 +188,12 @@ async function bootstrap(): Promise<BootstrapHandle> {
     getChatKey: () => config.secrets.get(CHAT_API_KEY_SECRET),
     register,
   });
-  publishPushStores(push, windowBridge, register);
+  publishPushStores(push, windowBridge, register, { bound });
   // A preset switch stops the turn and speech the way the stop button does, then reloads.
   register(
     wirePresetSwitch({
       registry: presetRegistry,
+      boundId,
       bridge: windowBridge,
       onBeforeReload: push.stopTurn,
     }),
@@ -192,7 +205,7 @@ async function bootstrap(): Promise<BootstrapHandle> {
     onDrop: (env, reason) => log.info("drop", { event_name: env.event_name, reason }),
   });
   const userInput = createUserInputSource(bus);
-  const help = wireHelpGuide({ userInput, bridge: windowBridge, register });
+  const help = wireHelpGuide({ userInput, bridge: windowBridge, register, bound });
 
   const controls = wirePetControls({
     root,
@@ -207,6 +220,8 @@ async function bootstrap(): Promise<BootstrapHandle> {
     pushSocket: push.pushSocket,
     stopTurn: push.stopTurn,
     presetRegistry,
+    petWindows,
+    boundId,
     voiceInputStatus,
     screenSourceProvider,
     surfaces,
@@ -230,6 +245,7 @@ async function bootstrap(): Promise<BootstrapHandle> {
     if (isDisposed()) return { dispose };
     surfaces.setAttachmentLimits(cfg.guardrails.attachments);
     const configured = await createConfiguredBootstrap(cfg, {
+      bound,
       config,
       renderer,
       ambient,

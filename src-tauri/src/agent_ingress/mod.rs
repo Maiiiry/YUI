@@ -28,14 +28,14 @@ mod payload;
 // ─── Emit helper ──────────────────────────────────────────────────────────────
 
 fn emit_agent_event(app: &AppHandle, payload: AgentEventPayload) {
-    let result = app.emit(AGENT_INBOX_CHANNEL, payload);
+    let result = app.emit_to(INGRESS_WINDOW, AGENT_INBOX_CHANNEL, payload);
     if let Err(e) = &result {
         log::warn!("agent_ingress_emit_failed error={e}");
     }
 }
 
 fn emit_signals_event(app: &AppHandle, payload: SignalsPayload) {
-    let result = app.emit(SIGNALS_INBOX_CHANNEL, payload);
+    let result = app.emit_to(INGRESS_WINDOW, SIGNALS_INBOX_CHANNEL, payload);
     if let Err(e) = &result {
         log::warn!("agent_ingress_signals_emit_failed error={e}");
     }
@@ -175,6 +175,9 @@ fn claim_and_bind(
     Some(result)
 }
 
+/// The webview that owns the ingress; every ingress event is delivered to it alone.
+const INGRESS_WINDOW: &str = "main";
+
 /// Spawns the loopback HTTP listener on the given port.
 ///
 /// Bind failure after the retry window is non-fatal: the app continues without the
@@ -195,9 +198,11 @@ pub fn start(app: &AppHandle, port: u16) {
                     Some(Err(e)) => {
                         log::warn!("agent_ingress_bind_failed port={port} error={e}");
                         // Reaches the page that is loaded when the retries end; a reload inside that window misses it.
-                        if let Err(e) =
-                            app.emit(INGRESS_DEAD_CHANNEL, serde_json::json!({ "port": port }))
-                        {
+                        if let Err(e) = app.emit_to(
+                            INGRESS_WINDOW,
+                            INGRESS_DEAD_CHANNEL,
+                            serde_json::json!({ "port": port }),
+                        ) {
                             log::warn!("agent_ingress_dead_emit_failed error={e}");
                         }
                         return;

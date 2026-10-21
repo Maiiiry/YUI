@@ -12,6 +12,7 @@ import {
   type PresetState,
   parsePresetState,
 } from "./active-preset";
+import { isPetWindowLive, readOpenPetWindowIds } from "./pet-windows";
 import {
   DEFAULT_PRESET_ID,
   PRESET_COPIED_KEYS,
@@ -86,10 +87,17 @@ export function createPresetRegistry(deps?: {
       return true;
     },
 
-    /** Deletes a preset and its keys. The default preset and the active one are kept. */
+    /** Deletes a preset and its keys; refuses default, active, desired-open, and live presets. */
     remove(id: string): boolean {
       const { active, list } = latest();
-      if (id === DEFAULT_PRESET_ID || id === active || !list.some((e) => e.id === id)) return false;
+      if (
+        id === DEFAULT_PRESET_ID ||
+        id === active ||
+        !list.some((e) => e.id === id) ||
+        readOpenPetWindowIds().includes(id) ||
+        isPetWindowLive(id)
+      )
+        return false;
       try {
         for (const key of PRESET_KEYS) kv()?.removeItem(resolveStorageKey(key, id));
       } catch {
@@ -99,11 +107,17 @@ export function createPresetRegistry(deps?: {
       return true;
     },
 
-    /** Makes a listed preset the active one. */
-    activate(id: string): void {
+    /** Returns true after activating a listed preset; returns false for unknown, desired-open, or live ids. */
+    activate(id: string): boolean {
       const { list } = latest();
-      if (!list.some((e) => e.id === id)) return;
+      if (
+        !list.some((e) => e.id === id) ||
+        readOpenPetWindowIds().includes(id) ||
+        isPetWindowLive(id)
+      )
+        return false;
       core.commit({ active: id, list });
+      return true;
     },
 
     reloadFromStorage: core.reloadFromStorage,

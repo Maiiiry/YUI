@@ -1,8 +1,4 @@
-/**
- * Preset switch — every store resolves its keys once at boot, so a window follows a change of the
- * active preset by reloading. Every registry edit in this window goes out over the settings bridge;
- * another window's arrives over it, with the registry key's `storage` event as the fallback.
- */
+/** Every unbound window reloads on activation; a bound window only rereads the list. */
 
 import type { SettingsBridge } from "../../io/bridge/settings-bridge";
 import { PRESETS_KEY } from "../../settings/preset/active-preset";
@@ -14,6 +10,8 @@ const EMIT_WAIT_MS = 250;
 export function wirePresetSwitch(deps: {
   registry: Pick<PresetRegistry, "get" | "subscribe" | "reloadFromStorage">;
   bridge: Pick<SettingsBridge, "emitPresetChanged" | "onPresetChanged">;
+  /** A bound window keeps its own preset when the active preset changes. */
+  boundId?: string | null;
   /** Runs once before the reload; the pet window stops its turn and speech here. */
   onBeforeReload?: () => void;
   reload?: () => void;
@@ -26,7 +24,7 @@ export function wirePresetSwitch(deps: {
 
   // `sent` is this window's own switch message: the page unloading before it leaves would lose it.
   function follow(sent?: Promise<void>): void {
-    if (switching) return;
+    if (switching || deps.boundId != null) return;
     switching = true;
     onBeforeReload?.();
     if (!sent) {
