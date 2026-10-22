@@ -193,6 +193,17 @@ describe("createQuickControls — toggles", () => {
         return { settings, qc: buildQc({ agentNotifySettings: settings }) };
       },
     },
+    {
+      name: "one-voice",
+      selector: ".yui-one-voice-switch",
+      ariaLabel: "한 번에 한 명만 말하기",
+      initialEnabled: true,
+      gated: true,
+      build: () => {
+        const settings = createFlagSettings(true);
+        return { settings, qc: buildQc({ oneVoiceSettings: settings }) };
+      },
+    },
   ];
 
   it.each(
@@ -257,6 +268,19 @@ describe("createQuickControls — toggles", () => {
 
     settings.setEnabled(initialEnabled);
     expect(toggle.getAttribute("aria-checked")).toBe(String(initialEnabled));
+
+    qc.dispose();
+  });
+
+  it("places the one-voice switch directly after the voice-output switch in the Input tab", () => {
+    const qc = buildQc({ oneVoiceSettings: createFlagSettings(true) });
+    qc.open();
+
+    const row = qc.el.querySelector(".yui-one-voice-switch")!.closest(".yui-row")!;
+    expect(qc.el.querySelector("#yui-panel-input")!.contains(row)).toBe(true);
+    expect(row.previousElementSibling).toBe(
+      qc.el.querySelector(".yui-tts-switch")!.closest(".yui-row"),
+    );
 
     qc.dispose();
   });
