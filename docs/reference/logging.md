@@ -29,6 +29,15 @@ Applies to all TypeScript in `src/` and all Rust in `src-tauri/src/`.
 | `info` | State transitions and lifecycle milestones | `vrm_loaded`, `state_change`, `backend_call`, `fire`, `turn` |
 | `debug` | High-frequency or per-item detail | per-segment `synth`, per-frame work, poll ticks |
 
+## Turn gate events
+
+`dispatcher/core/turn-gate.ts` logs at `info`.
+
+| Event | Fields | When |
+|---|---|---|
+| `turn_hold` | none | Another window holds the turn lock, so this window waits. |
+| `turn_granted` | `waited_ms` | The waiting window received the lock after that many milliseconds. |
+
 ## TypeScript Usage
 
 ```ts

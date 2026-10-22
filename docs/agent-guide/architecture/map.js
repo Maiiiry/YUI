@@ -91,7 +91,7 @@ globalThis.YUI_MAP =
       "kind": "module",
       "col": 2,
       "row": 1,
-      "desc": "Event bus, tier classification, guardrails, pacer, tier-1 reactions",
+      "desc": "Event bus, tier classification, guardrails, pacer, turn gate, tier-1 reactions",
       "zone": "logic"
     },
     {
@@ -731,7 +731,7 @@ globalThis.YUI_MAP =
       "id": "io/chat/conversation",
       "module": "conversation",
       "label": "conversation stores",
-      "role": "Transcript, context history, response-id session, and session diagnostics.",
+      "role": "Transcript, context history, response-id session, session diagnostics, and the overheard store and reader that hand a turn the other open presets' unheard lines.",
       "paths": [
         "src/io/chat/conversation"
       ]
@@ -935,6 +935,15 @@ globalThis.YUI_MAP =
       ]
     },
     {
+      "id": "io/locks",
+      "module": "window",
+      "label": "window locks",
+      "role": "The exclusive Web Lock a window holds, shared by the voice gate and the turn gate.",
+      "paths": [
+        "src/io/locks"
+      ]
+    },
+    {
       "id": "io/lifecycle",
       "module": "window",
       "label": "page lifecycle",
@@ -956,7 +965,7 @@ globalThis.YUI_MAP =
       "id": "dispatcher",
       "module": "dispatcher",
       "label": "dispatcher",
-      "role": "The router: pumps the bus, classifies each envelope, and runs one backend call at a time.",
+      "role": "The router: pumps the bus, classifies each envelope, and runs one backend call at a time, taking the cross-window turn lock first.",
       "paths": [
         "src/dispatcher"
       ]
@@ -965,7 +974,7 @@ globalThis.YUI_MAP =
       "id": "dispatcher/core",
       "module": "dispatcher",
       "label": "bus and gates",
-      "role": "The event bus, tier classification, guardrails, and the proactive pacer.",
+      "role": "The event bus, tier classification, guardrails, the proactive pacer, and the turn gate.",
       "paths": [
         "src/dispatcher/core"
       ]
@@ -1424,6 +1433,15 @@ globalThis.YUI_MAP =
       "carries": "previous response id, pending tool outputs, transcript entries after the last boundary",
       "kind": "callback",
       "transport": "request",
+      "wiring": "src/app/turn/wire-dispatcher.ts"
+    },
+    {
+      "id": "overheard-backend",
+      "from": "io/chat/conversation",
+      "to": "dispatcher/backend",
+      "carries": "other presets' entries after the per-pair cursor; the cursor commits after a turn ends ok",
+      "kind": "callback",
+      "transport": "shared",
       "wiring": "src/app/turn/wire-dispatcher.ts"
     },
     {
@@ -2525,6 +2543,33 @@ globalThis.YUI_MAP =
       "to": "dispatcher/core",
       "carries": "pacer gap → pacer.noteIntervalChanged()",
       "kind": "callback",
+      "transport": "shared",
+      "wiring": "src/app/turn/wire-dispatcher.ts"
+    },
+    {
+      "id": "settings-turn-gate",
+      "from": "settings",
+      "to": "dispatcher/core",
+      "carries": "yui.one-voice flag → turnGate enabled(), read on each acquire",
+      "kind": "callback",
+      "transport": "shared",
+      "wiring": "src/app/turn/wire-dispatcher.ts"
+    },
+    {
+      "id": "settings-overheard",
+      "from": "settings",
+      "to": "io/chat/conversation",
+      "carries": "yui.presets names and active id, yui.windows open list → the overheard reader's preset names and other preset ids",
+      "kind": "storage",
+      "transport": "shared",
+      "wiring": "src/app/turn/wire-dispatcher.ts"
+    },
+    {
+      "id": "transcripts-overheard",
+      "from": "settings",
+      "to": "io/chat/conversation",
+      "carries": "another preset's yui.<id>.chat_transcript → readTranscriptAfterBoundary, read-only",
+      "kind": "storage",
       "transport": "shared",
       "wiring": "src/app/turn/wire-dispatcher.ts"
     },
@@ -4004,6 +4049,20 @@ globalThis.YUI_MAP =
         "from": "pet-<id>",
         "to": "pet",
         "carries": "navigator.locks yui.speaking",
+        "kind": "storage"
+      },
+      {
+        "id": "turn-lock-pet-bound",
+        "from": "pet",
+        "to": "pet-<id>",
+        "carries": "navigator.locks yui.turn: taken before a turn's backend call while yui.one-voice is on, released when the pipeline is idle (call ended and playback done) or when the window dies; other windows queue in order",
+        "kind": "storage"
+      },
+      {
+        "id": "turn-lock-bound-pet",
+        "from": "pet-<id>",
+        "to": "pet",
+        "carries": "navigator.locks yui.turn",
         "kind": "storage"
       },
       {

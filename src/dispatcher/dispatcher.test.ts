@@ -10,10 +10,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PeekConfig, TapConfig } from "../config/validators/avatar/types";
+import { fakeLocks } from "../io/locks/fake-lock-manager";
 import type { Logger } from "../logger";
 import type { BackendCaller, TurnFailure } from "./backend/backend-caller";
 import { createEventBus, type EventBus } from "./core/event-bus";
 import { createGuardrails, type Guardrails } from "./core/guardrails";
+import { createTurnGate } from "./core/turn-gate";
 import { createDispatcher, type Dispatcher } from "./dispatcher";
 import {
   type DeferredCall,
@@ -820,5 +822,156 @@ describe("dispatcher — the admitted turn and the quoted-turn ledger", () => {
     expect(callDeferred).toHaveLength(2);
     expect(surfaces.settleQuote).toHaveBeenCalledTimes(1);
     expect(surfaces.clearQuote).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatcher — turn gate", () => {
+  const proactive = (ts: number) =>
+    env({
+      source: "os_event_watcher",
+      event_name: "proactive.tap_bored",
+      ts,
+      dnd_override: false,
+    });
+  let waiting: Array<{ signal: AbortSignal; grant: () => void }>;
+  let release: ReturnType<typeof vi.fn<() => void>>;
+  let called: () => string[];
+
+  beforeEach(() => {
+    waiting = [];
+    release = vi.fn<() => void>();
+    dispatcher.stop();
+    const turnGate = {
+      acquire: (signal: AbortSignal) =>
+        new Promise<void>((grant) => {
+          waiting.push({ signal, grant });
+          signal.addEventListener("abort", () => grant());
+        }),
+      release,
+    };
+    dispatcher = createDispatcher({
+      bus,
+      renderer: renderer as never,
+      backendCaller,
+      guardrails,
+      turnLog,
+      hasOutstandingSpeech: () => speaking,
+      logger,
+      peekConfig: () => PEEK_CONFIG,
+      tapConfig: () => TAP_CONFIG,
+      turnGate,
+    });
+    called = () =>
+      vi.mocked(backendCaller.call).mock.calls.map(([turn]) => turn.trigger.event_name);
+    dispatcher.start();
+  });
+
+  it("starts the backend call only after the gate grants the turn", async () => {
+    bus.push(proactive(NOW));
+    await vi.advanceTimersByTimeAsync(20);
+    expect(called()).toEqual([]);
+    expect(dispatcher.inFlight()?.trigger.event_name).toBe("proactive.tap_bored");
+
+    waiting[0].grant();
+    await vi.advanceTimersByTimeAsync(20);
+    expect(called()).toEqual(["proactive.tap_bored"]);
+  });
+
+  it("a user turn aborts the waiting turn and reaches the backend first once granted", async () => {
+    bus.push(proactive(NOW));
+    await vi.advanceTimersByTimeAsync(20);
+    bus.push(userEnv("hi"));
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(waiting[0].signal.aborted).toBe(true);
+    expect(waiting[1].signal.aborted).toBe(false);
+    expect(called()).toEqual([]);
+
+    waiting[1].grant();
+    await vi.advanceTimersByTimeAsync(20);
+    expect(called()).toEqual(["user.text_submitted"]);
+    expect(callDeferred.at(-1)?.signal?.aborted).toBe(false);
+  });
+
+  it("stop() releases the lock this window holds", async () => {
+    bus.push(proactive(NOW));
+    await vi.advanceTimersByTimeAsync(20);
+    waiting[0].grant();
+    await vi.advanceTimersByTimeAsync(20);
+
+    dispatcher.stop();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("releases once, when the call has ended and the playback is done", async () => {
+    bus.push(proactive(NOW));
+    await vi.advanceTimersByTimeAsync(20);
+    waiting[0].grant();
+    await vi.advanceTimersByTimeAsync(20);
+
+    setSpeaking(true);
+    callDeferred[0].resolve("ok");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(release).not.toHaveBeenCalled();
+
+    setSpeaking(false);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(release).toHaveBeenCalledOnce();
+  });
+});
+
+describe("dispatcher — turn gate across two windows", () => {
+  it.each([
+    { name: "deferred during the playback", pushDuringPlayback: true },
+    { name: "popped in the first tick after the playback", pushDuringPlayback: false },
+  ])("a proactive turn $name waits behind the other window's user turn", async ({
+    pushDuringPlayback,
+  }) => {
+    const { locks } = fakeLocks();
+    const calls: DeferredCall[] = [];
+    const backend = makeDeferredBackendCaller(calls);
+    const windowA = createDispatcher({
+      bus,
+      renderer: renderer as never,
+      backendCaller: backend,
+      guardrails,
+      turnLog,
+      hasOutstandingSpeech: () => speaking,
+      logger,
+      peekConfig: () => PEEK_CONFIG,
+      tapConfig: () => TAP_CONFIG,
+      turnGate: createTurnGate({ enabled: () => true, locks, logger }),
+    });
+    const proactive = (ts: number) =>
+      env({
+        source: "os_event_watcher",
+        event_name: "proactive.tap_bored",
+        ts,
+        dnd_override: false,
+      });
+    windowA.start();
+    bus.push(proactive(NOW));
+    await vi.advanceTimersByTimeAsync(20);
+
+    let bGranted = false;
+    void createTurnGate({ enabled: () => true, locks, logger })
+      .acquire(new AbortController().signal)
+      .then(() => {
+        bGranted = true;
+      });
+    await vi.advanceTimersByTimeAsync(20);
+    setSpeaking(true);
+    calls[0].resolve("ok");
+    await vi.advanceTimersByTimeAsync(20);
+    if (pushDuringPlayback) {
+      bus.push(proactive(NOW + 100));
+      await vi.advanceTimersByTimeAsync(20);
+    }
+    setSpeaking(false);
+    if (!pushDuringPlayback) bus.push(proactive(NOW + 100));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect({ aCalls: calls.length, bGranted }).toEqual({ aCalls: 1, bGranted: true });
+    windowA.stop();
   });
 });

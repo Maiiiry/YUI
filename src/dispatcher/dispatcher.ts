@@ -13,7 +13,8 @@
  *       proactive.* · schedule.* · agent.* · signals.*) → backend_caller.
  *
  * Single in-flight backend call. Deferred tier2 keeps only one item in local pending
- * (with two or more deferred, the oldest is dropped).
+ * (with two or more deferred, the oldest is dropped). With the turn gate on, a call first waits
+ * for the cross-window turn lock, which stays held until the call has ended and its playback is done.
  *
  * Every started turn anchors the global proactive gap. A fire from a paced source (loop cues,
  * schedule, signals, agent, screen) that arrives while that window holds is dropped as
@@ -44,6 +45,7 @@ import { classify, PACED_SOURCES, type UserTurnSource, userTurnSourceOf } from "
 import type { BusEnvelope, EventBus } from "./core/event-bus";
 import type { Guardrails } from "./core/guardrails";
 import type { ProactivePacer } from "./core/proactive-pacer";
+import type { TurnGate } from "./core/turn-gate";
 import { createTier1Render } from "./tier1/render";
 import type { Turn, TurnLog } from "./turn/turn";
 
@@ -97,6 +99,8 @@ interface DispatcherDeps {
    * superseded_by_user returns early and never reaches this.
    */
   onTurnFailed?: (turn: Turn, reason: TurnFailure) => void;
+  /** Cross-window turn lock: taken before a turn's backend call, released once the pipeline is idle again. */
+  turnGate?: TurnGate;
   /** The dispatcher admitted a trigger: the turn it opened, reported before its backend call starts. */
   onTurnAdmitted?: (turn: Turn) => void;
   /** Structured logging (defaults to the dispatcher namespace logger). */
@@ -185,6 +189,8 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     started_at: number;
     outcome: TurnOutcome | null;
   } | null = null;
+  // A turn passed the gate; cleared when the pipeline goes idle.
+  let gateHeld = false;
   // Consecutive backend call failure counter — superseded_by_user does not count as a failure.
   let consecutiveFailures = 0;
   const tier1 = createTier1Render({
@@ -326,9 +332,15 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     // Server-side HTTP error detail, kept per call so a superseded turn's late detail
     // can never bleed into the next one.
     let errorDetail: TurnErrorDetail | undefined;
-    void backendCaller
-      .call(turn, abort.signal, (detail) => {
-        errorDetail = detail;
+    const gate = deps.turnGate?.acquire(abort.signal) ?? Promise.resolve();
+    void gate
+      .then((): Promise<TurnOutcome> | TurnOutcome => {
+        // An abort while the gate waited means the turn was superseded before it began.
+        if (abort.signal.aborted) return "superseded_by_user";
+        gateHeld = true;
+        return backendCaller.call(turn, abort.signal, (detail) => {
+          errorDetail = detail;
+        });
       })
       .then((outcome) => {
         if (openTurn?.id === turn.id) openTurn.outcome = outcome;
@@ -362,6 +374,8 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
               // Playing — free the slot only and keep pending. pump drains it after playback ends.
               setInFlight(null);
             } else {
+              // The next call asks for the lock again, behind any window already waiting for it.
+              releaseGate();
               startBackendCall(pending.shift()!);
             }
           } else if (state === "degraded" && pending.length > 0) {
@@ -467,12 +481,20 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     // target === "drop": unhandled event (no-op — bus already filters unknown event_name).
   }
 
+  function releaseGate(): void {
+    if (!gateHeld) return;
+    gateHeld = false;
+    deps.turnGate?.release();
+  }
+
   /**
    * pump: drain bus every tick. Operates in running/cooldown/degraded all (tier1 always continues each).
    * Otherwise (booting/stopped) hold pending events as no-op.
    */
   function pump(): void {
     if (state !== "running" && state !== "cooldown" && state !== "degraded") return;
+    // Before the bus: a turn popped now asks for the lock again, behind any window already waiting.
+    if (!currentPipelineBusy()) releaseGate();
     let env: BusEnvelope | null;
     while ((env = bus.pop()) !== null) {
       handle(env);
@@ -507,6 +529,7 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
         setInFlight(null);
       }
       pending.length = 0;
+      releaseGate();
       tier1.dispose();
       setState("stopped");
     },

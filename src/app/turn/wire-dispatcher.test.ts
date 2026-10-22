@@ -77,6 +77,7 @@ describe("wireDispatcher", () => {
       onUsage: () => {},
       chatHistoryStore: {} as never,
       contextHistory: {} as never,
+      overheardStore: {} as never,
       agentSettings: {} as never,
       guardrailsSettings: {
         subscribe: vi.fn(() => guardrailsOverrideDisposer),
@@ -85,6 +86,7 @@ describe("wireDispatcher", () => {
         get: () => ({ value: 0 }),
         subscribe: vi.fn(() => pacerGapUnsubscribe),
       } as never,
+      oneVoiceSettings: { get: () => ({ enabled: false }) } as never,
       screenshotSettings: {} as never,
       screenCapturer: {} as never,
       getFrontmost: () => undefined,

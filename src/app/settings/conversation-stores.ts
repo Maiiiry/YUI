@@ -7,6 +7,10 @@ import {
   localStorageContextHistory,
 } from "../../io/chat/conversation/context-history";
 import {
+  createOverheardStore,
+  localStorageOverheard,
+} from "../../io/chat/conversation/overheard/overheard-store";
+import {
   createSessionDiagnosticsStore,
   localStorageSessionDiagnosticsStorage,
 } from "../../io/chat/conversation/session-diagnostics";
@@ -15,7 +19,7 @@ import {
   localStorageSessionStorage,
 } from "../../io/chat/conversation/session-store";
 
-/** The four io/chat conversation stores every window constructs, syncs, and disposes as one bag. */
+/** The io/chat conversation stores every window constructs, syncs, and disposes as one bag. */
 export function createConversationStores() {
   const contextHistory = createContextHistory({
     storage: localStorageContextHistory(),
@@ -26,12 +30,15 @@ export function createConversationStores() {
   // Unified conversation transcript — both protocol modes append, and only CC mode pulls its
   // outbound share from here. "Start new conversation" writes a session boundary instead of erasing it.
   const chatHistoryStore = createChatHistoryStore({ storage: localStorageChatHistoryStorage() });
+  // Per other preset, how far this window has heard its transcript.
+  const overheardStore = createOverheardStore({ storage: localStorageOverheard() });
 
   return {
     contextHistory,
     sessionStore,
     sessionDiagnostics,
     chatHistoryStore,
+    overheardStore,
   };
 }
 
