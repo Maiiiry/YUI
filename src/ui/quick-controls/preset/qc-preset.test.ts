@@ -49,12 +49,14 @@ describe("createQuickControls — presets", () => {
   });
 
   afterEach(() => {
+    history.replaceState(null, "", "/");
     qc.dispose();
     registry.dispose();
     mount.remove();
   });
 
   function rebuild(boundId: string | null = null) {
+    if (boundId) history.replaceState(null, "", `/?preset=${boundId}`);
     qc.dispose();
     const petWindows = createPetWindows();
     const args = defaultQcArgs(mount);
@@ -68,6 +70,103 @@ describe("createQuickControls — presets", () => {
     qc.open();
     return petWindows;
   }
+
+  function editMode(edit: string, onEditTarget = vi.fn(), boundId: string | null = null) {
+    history.replaceState(null, "", `/?${boundId ? `preset=${boundId}&` : ""}edit=${edit}`);
+    qc.dispose();
+    const petWindows = createPetWindows();
+    qc = createQuickControls({
+      ...defaultQcArgs(mount),
+      presetRegistry: registry,
+      petWindows,
+      boundId,
+      onEditTarget,
+    });
+    qc.open();
+    return { petWindows, onEditTarget };
+  }
+
+  it("edit mode: picking a preset hands its id over without activating, open windows included", () => {
+    const { petWindows, onEditTarget } = editMode("aaaa0001");
+    petWindows.open("bbbb0002");
+    const select = $<HTMLSelectElement>(".yui-preset__select");
+    expect(Array.from(select.options).map((o) => [o.textContent, o.disabled])).toEqual([
+      ["default", false],
+      ["natsume", false],
+      ["perlica", false],
+    ]);
+    select.value = "bbbb0002";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(onEditTarget).toHaveBeenCalledWith("bbbb0002");
+    expect(registry.get().active).toBe("aaaa0001");
+    expect(select.disabled).toBe(false);
+  });
+
+  it("edit mode: the select and the scope lines name the ?edit= preset, not the active one", () => {
+    editMode("bbbb0002");
+
+    expect($<HTMLSelectElement>(".yui-preset__select").value).toBe("bbbb0002");
+    expect($(".yui-preset__label").textContent).toBe("Editing");
+    expect(qc.el.querySelector("#yui-panel-conn .yui-tabpanel__scope")?.textContent).toBe(
+      "perlica · Connection",
+    );
+  });
+
+  it("edit mode: a non-active row keeps its window button and adds Use in main, disabled while its window is open", () => {
+    const { petWindows } = editMode("bbbb0002");
+    petWindows.open("default");
+    openManage();
+    const buttons = (name: string) =>
+      Array.from(rowOf(name).querySelectorAll<HTMLButtonElement>(".yui-preset-row__window"));
+
+    expect(buttons("default").map((b) => [b.textContent, b.disabled])).toEqual([
+      ["Close window", false],
+      ["Use in main", true],
+    ]);
+    expect(buttons("natsume")).toEqual([]);
+    buttons("perlica")[1]!.click();
+
+    expect(registry.get().active).toBe("bbbb0002");
+  });
+
+  it("edit mode: the note says where the edited preset lives", () => {
+    const note = () => $(".yui-preset__note").textContent;
+    editMode("aaaa0001");
+    expect(note()).toBe("natsume is shown in main.");
+    const { petWindows } = editMode("bbbb0002");
+    expect(note()).toBe("perlica is in no window now. Changes are saved and apply when it opens.");
+    petWindows.open("bbbb0002");
+    expect(note()).toBe("perlica is open in its own window. Changes apply there at once.");
+  });
+
+  it("edit mode: the edited preset leaving the registry sends the window to the active one", () => {
+    const { onEditTarget } = editMode("bbbb0002");
+
+    registry.remove("bbbb0002");
+
+    expect(onEditTarget).toHaveBeenCalledTimes(1);
+    expect(onEditTarget).toHaveBeenCalledWith("aaaa0001");
+  });
+
+  it("edit mode: a bound window whose edited preset is deleted returns to its bound preset", () => {
+    const { onEditTarget } = editMode("bbbb0002", vi.fn(), "default");
+
+    registry.remove("bbbb0002");
+
+    expect(onEditTarget).toHaveBeenCalledTimes(1);
+    expect(onEditTarget).toHaveBeenCalledWith("default");
+  });
+
+  it("edit mode: a new preset is seeded from the edited preset", () => {
+    editMode("bbbb0002");
+    openManage();
+    $<HTMLButtonElement>(".yui-preset-pop .yui-add-btn").click();
+
+    expect($(".yui-preset-new .yui-row__sub").textContent).toBe(
+      "Copies perlica's settings. Starts with an empty conversation.",
+    );
+  });
 
   it("the strip owns its ingress settings subscription and releases it", () => {
     const agentNotifySettings = createAgentNotifySettings();
@@ -246,7 +345,7 @@ describe("createQuickControls — presets", () => {
       ]),
     ).toEqual([
       ["default", null, false],
-      ["natsume", "In use", false],
+      ["natsume", "Shown in main", false],
       ["perlica", null, true],
     ]);
   });

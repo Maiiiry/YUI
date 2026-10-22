@@ -4,7 +4,12 @@
  */
 
 import type { Logger } from "../../../logger";
-import type { PresetEntry, PresetState } from "../../../settings/preset/active-preset";
+import {
+  type PresetEntry,
+  type PresetState,
+  presetIdForWindow,
+  presetNameFor,
+} from "../../../settings/preset/active-preset";
 import { isPresetWindowLive, type PetWindows } from "../../../settings/preset/pet-windows";
 import { DEFAULT_PRESET_ID } from "../../../settings/preset/preset-keys";
 import type { PresetRegistry } from "../../../settings/preset/preset-registry";
@@ -12,7 +17,7 @@ import { t } from "../../i18n";
 import { PLUS_SVG } from "../constants";
 import { REMOVE_SVG, RENAME_SVG } from "../sections/user-asset-list";
 
-type Registry = Pick<PresetRegistry, "get" | "create" | "rename" | "remove">;
+type Registry = Pick<PresetRegistry, "get" | "create" | "rename" | "remove" | "activate">;
 
 export interface PresetManage {
   render(): void;
@@ -31,9 +36,12 @@ export function createPresetManage(deps: {
   log: Logger;
   petWindows?: PetWindows;
   boundId?: string | null;
+  /** The settings window: rows also offer "Use in main". */
+  edit?: boolean;
   presetUrl?: (id: string) => string | null;
 }): PresetManage {
   const { el, registry, log, petWindows, boundId } = deps;
+  const edit = !!deps.edit;
   let renamingId: string | null = null;
   let confirmId: string | null = null;
   let naming = false;
@@ -59,7 +67,7 @@ export function createPresetManage(deps: {
       !desired &&
       !live;
     row.innerHTML = `
-          <span class="yui-preset-row__name"></span>${entry.id === active ? `<span class="yui-preset-row__badge">${t("preset.in_use")}</span>` : ""}
+          <span class="yui-preset-row__name"></span>${entry.id === active ? `<span class="yui-preset-row__badge">${t("preset.in_use")}</span>` : ""}${edit && (desired || live) ? `<span class="yui-preset-row__badge">${t("preset.window_open")}</span>` : ""}
           <span class="yui-preset-row__acts">
             <button class="yui-preset-row__rename" type="button">${RENAME_SVG}</button>${removable ? `<button class="yui-preset-row__remove" type="button">${REMOVE_SVG}</button>` : ""}
           </span>`;
@@ -90,6 +98,16 @@ export function createPresetManage(deps: {
       button.addEventListener("click", () =>
         desired ? petWindows.close(entry.id) : petWindows.open(entry.id),
       );
+      row.querySelector(".yui-preset-row__acts")!.append(button);
+    }
+    if (edit && entry.id !== active) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "yui-preset-row__window";
+      button.textContent = t("preset.use_in_main");
+      // The registry refuses a preset whose window is open; the button shows the rule.
+      button.disabled = desired || live;
+      button.addEventListener("click", () => registry.activate(entry.id));
       row.querySelector(".yui-preset-row__acts")!.append(button);
     }
     const url = deps.presetUrl?.(entry.id);
@@ -186,7 +204,6 @@ export function createPresetManage(deps: {
   }
 
   function newFieldEl(state: PresetState): HTMLElement {
-    const activeName = state.list.find((e) => e.id === state.active)?.name ?? "";
     const field = document.createElement("div");
     field.className = "yui-stack yui-input-row yui-preset-new";
     field.innerHTML = `
@@ -195,7 +212,9 @@ export function createPresetManage(deps: {
           <span class="yui-input-wrap"><input class="yui-ep-input" id="yui-preset-new-name" type="text" placeholder="${t("preset.new_ph")}" /></span>
           <p class="yui-input-row__error" role="status"></p>
           <span class="yui-preset-row__hint">${hintHtml("preset.hint_create")}</span>`;
-    field.querySelector(".yui-row__sub")!.textContent = t("preset.new_sub", { name: activeName });
+    field.querySelector(".yui-row__sub")!.textContent = t("preset.new_sub", {
+      name: presetNameFor(state, presetIdForWindow()),
+    });
     const input = field.querySelector("input")!;
     const errorEl = field.querySelector(".yui-input-row__error")!;
     input.value = draft;
