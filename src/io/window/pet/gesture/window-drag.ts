@@ -19,6 +19,17 @@ import { attachOrbitGesture } from "./orbit-gesture";
 
 const log = createLogger("drag");
 
+// Set when the threshold promotes a press to a native drag; the drop source consumes it on the
+// release event, so only the window that was dragged saves its position.
+let dragArmed = false;
+
+/** True from this window's drag start until the drop source consumed the release. */
+export function wasWindowDragging(): boolean {
+  if (!dragArmed) return false;
+  dragArmed = false;
+  return true;
+}
+
 /**
  * Invoke the Rust `drag_window` command to start an OS-native window drag.
  * Should be called from a primary-button `pointerdown` handler.
@@ -131,7 +142,9 @@ export async function initDrag(
     // `endGesture` already fired in that case, and starting the native drag now would
     // grab a button that is no longer held.
     if (ended) return;
+    dragArmed = true;
     invokeDragWindow().catch((err: unknown) => {
+      dragArmed = false;
       log.warn("drag_window_invoke_failed", { error: String(err) });
     });
   }

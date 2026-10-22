@@ -85,9 +85,8 @@ interface TtsProvider {
   isReady(): boolean;
 }
 
-// Deadline so a hung request settles instead of stalling the turn's ordered playback forever.
-// One HTTP call per synth(), so this is the whole call's budget.
-export const TTS_SYNTH_TIMEOUT_MS = 10_000;
+// 30 s: queued synths on a serial TTS server shared by pet windows answer within it.
+export const TTS_SYNTH_TIMEOUT_MS = 30_000;
 
 interface TtsSynthOptions {
   provider: SynthProvider;

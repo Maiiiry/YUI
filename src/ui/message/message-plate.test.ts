@@ -41,6 +41,16 @@ describe("createMessagePlate", () => {
     expect(dock().getAttribute("aria-label")).toBeTruthy();
   });
 
+  it("shows YUI before setName and the set name after", () => {
+    const fresh = document.createElement("div");
+    document.body.appendChild(fresh);
+    const named = createMessagePlate({ mount: fresh, onDock, startDragging });
+    const nameEl = fresh.querySelector(".yui-plate__name") as HTMLElement;
+    expect(nameEl.textContent).toBe("YUI");
+    named.setName("perlica");
+    expect(nameEl.textContent).toBe("perlica");
+  });
+
   it("starts idle with an empty state label", () => {
     expect(el().getAttribute("data-state")).toBe("idle");
     expect(stateLabel().textContent).toBe("");

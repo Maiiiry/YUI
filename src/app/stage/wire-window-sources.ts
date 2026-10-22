@@ -16,6 +16,7 @@ import {
   type KeepOnScreenHandle,
 } from "../../io/window/geometry/keep-on-screen";
 import { toScreenMonitor } from "../../io/window/geometry/screen-geometry";
+import { wasWindowDragging } from "../../io/window/pet/gesture/window-drag";
 import { createWindowResizeSource } from "../../io/window/pet/window-resize-source";
 import type { Logger } from "../../logger";
 import type { Renderer } from "../../renderer";
@@ -58,6 +59,12 @@ export function wireWindowSources(deps: {
   isHeld: () => boolean;
   /** The bed the avatar commands lay her on. */
   bed: AvatarBed;
+  /** The applied Ctrl+wheel resize bounds — the window-geometry store's record. */
+  onResizeApplied?: (bounds: { x: number; y: number; width: number; height: number }) => void;
+  /** The OS drag release settled — the window-geometry store saves the position. */
+  onDragReleased?: () => Promise<void>;
+  /** True while a travel parks the window — a resize then reads the parked bounding box. */
+  isTravelActive?: () => boolean;
   log: Logger;
 }): Pick<
   WindowDropSource,
@@ -154,6 +161,8 @@ export function wireWindowSources(deps: {
       getPeekConfig,
       getGestureCues,
       onDragMiss: deps.onDragMiss,
+      onReleased: deps.onDragReleased,
+      wasDragging: wasWindowDragging,
       onSitLost: deps.onSitLost,
       sitDown: deps.sitDown,
       isHeld: deps.isHeld,
@@ -172,7 +181,8 @@ export function wireWindowSources(deps: {
           },
         };
       },
-      isLocked: deps.isHeld,
+      isLocked: () => deps.isHeld() || (deps.isTravelActive?.() ?? false),
+      onApplied: deps.onResizeApplied,
     });
     // Avatar RPC: the loopback ingress bridges `/avatar/*` here, where the state
     // lives and the movement happens. Perch gestures go through the drop source's

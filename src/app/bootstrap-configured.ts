@@ -23,6 +23,7 @@ import { wireStageGestures } from "./stage/wire-gestures";
 import { wireLocomotion } from "./stage/wire-locomotion";
 import { wireGaze, wireHitTest } from "./stage/wire-stage";
 import { wirePeek, wireSummonHotkey } from "./stage/wire-summon";
+import { wireWindowGeometry } from "./stage/wire-window-geometry";
 import { type TurnCorePhase1, wireTurnCore } from "./turn/turn-core";
 import type { wireVocabulary } from "./turn/vocabulary/wire-vocabulary";
 import type { VoicePipeline } from "./turn/voice/wire-voice-pipeline";
@@ -202,6 +203,9 @@ const realFactories: ConfiguredBootstrapFactories = {
     register(hitTest.stop);
     wireGaze({ renderer, gazeSettings, register });
 
+    // The saved geometry applies before the faller places the window and the bed scene parks it.
+    const windowGeometry = await wireWindowGeometry({ register });
+
     locomotion = wireLocomotion({
       bound: phase1.bound,
       bus,
@@ -220,6 +224,7 @@ const realFactories: ConfiguredBootstrapFactories = {
       onStrollEnd: (bodyReleased) => {
         if (bodyReleased) voice.resumeThinking();
       },
+      windowGeometry: windowGeometry ?? undefined,
       register,
       log,
     });

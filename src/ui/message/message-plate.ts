@@ -11,6 +11,8 @@ import "./message-plate.css";
 
 export interface MessagePlate {
   readonly el: HTMLElement;
+  /** Sets the name the plate shows. */
+  setName(name: string): void;
   /** Speech streams — "responding" while set, outranking busy. */
   setLive(live: boolean): void;
   /** A turn runs — "thinking" while set, unless speech streams. */
@@ -53,6 +55,7 @@ export function createMessagePlate({
   `;
   mount.prepend(el);
 
+  const nameEl = el.querySelector<HTMLSpanElement>(".yui-plate__name")!;
   const dockBtn = el.querySelector<HTMLButtonElement>(".yui-plate__dock");
   const stateEl = el.querySelector<HTMLSpanElement>(".yui-plate__state")!;
   if (startDragging) el.dataset.draggable = "";
@@ -100,6 +103,9 @@ export function createMessagePlate({
 
   return {
     el,
+    setName(value) {
+      nameEl.textContent = value;
+    },
     setLive(value) {
       live = value;
       applyState();

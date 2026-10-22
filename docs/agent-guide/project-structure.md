@@ -61,6 +61,7 @@ YUI/
         wire-bed-scene.ts            # The bed scene's wiring: builds the scene, starts the launch entry, reads the hold and sends the posture events
         wire-gestures.ts             # Pointer gestures on the stage: taps, pats, the window drag, and the camera orbit
         wire-window-sources.ts       # The Tauri window drop and resize sources, the avatar RPC executor, and keep-on-screen
+        wire-window-geometry.ts      # The per-window saved size and position: written after the OS drag ends and a Ctrl+wheel resize, applied once at boot
         wire-locomotion.ts           # Travel frame, the five locomotion loops, and the window sources composed into one handle
         wire-pet-stage.ts            # Stage wheel zoom, the persisted camera and throttle flow, and the feet-follow input anchor
         wire-summon.ts               # Peek state and exit triggers, tray summon, and the global summon hotkey
@@ -328,6 +329,7 @@ YUI/
       panels/                        # Panel and window state
         delegation-chip-settings.ts  # Per-device fold state of the delegation chip
         message-window-settings.ts   # Message-window mode and last outer position under the window's preset key
+        window-geometry-settings.ts  # Per-window-label size and position the user's drags and resizes leave
     io/                              # I/O layer: chat, voice, window and OS seams
       chat/
         secret-provider.ts             # Resolves each secret from its runtime store, then the build-time fallback
@@ -408,6 +410,7 @@ YUI/
           keep-on-screen.ts            # Pushes a window back until its centre lands on a monitor
           travel-frame.ts              # Parks the real window once for a scale-seam crossing
           stationary-frame.ts          # Widens the real window around a character that stays where she is
+          tauri-frame-window.ts        # The real pet window as one FrameWindow seam, built once for the movers
           perch.ts                     # Perch values, perch-target and placement types, and the host-edge span shared by the drop source, avatar RPC and locomotion
           visible-viewport.ts          # Cached height of the pet window part above the work-area bottom
         openers/                       # Openers and placement of the message, settings, devtools, and pet windows, the first two bound to a pet window's preset

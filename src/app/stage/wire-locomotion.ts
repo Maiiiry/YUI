@@ -63,6 +63,11 @@ export function wireLocomotion(deps: {
   agentNotifySettings: ReturnType<typeof createAgentNotifySettings>;
   vrmSelection: Pick<ReturnType<typeof createVrmSelection>, "getActive">;
   onStrollEnd: (bodyReleased: boolean) => void;
+  /** The window-geometry wiring, once boot has applied the saved record; absent outside Tauri. */
+  windowGeometry?: {
+    onResizeApplied(bounds: { x: number; y: number; width: number; height: number }): void;
+    onDragReleased(): Promise<void>;
+  };
   register: (teardown: () => void) => void;
   log: Logger;
 }): {
@@ -196,6 +201,11 @@ export function wireLocomotion(deps: {
     sitDown: () => sitter.sitDown(null),
     isHeld,
     bed: deps.bed,
+    onResizeApplied: (bounds) => deps.windowGeometry?.onResizeApplied(bounds),
+    onDragReleased: async () => {
+      await deps.windowGeometry?.onDragReleased();
+    },
+    isTravelActive: () => travelFrame.travel.current() !== null,
     log,
   });
   windowSourcesRef = windowSources;

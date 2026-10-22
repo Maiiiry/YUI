@@ -1,5 +1,5 @@
-import { afterEach, expect, it, vi } from "vitest";
-import { resolvePresetKey } from "./active-preset";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { presetNameFor, resolvePresetKey } from "./active-preset";
 
 afterEach(() => vi.unstubAllGlobals());
 it.each([
@@ -11,4 +11,22 @@ it.each([
     getItem: () => JSON.stringify({ active: "aaaa0001", list: [{ id: "aaaa0001", name: "A" }] }),
   });
   expect(resolvePresetKey("yui.endpoints")).toBe(key);
+});
+
+describe("presetNameFor", () => {
+  const state = {
+    active: "aaaa0001",
+    list: [
+      { id: "aaaa0001", name: "Alpha" },
+      { id: "bbbb0002", name: "Beta" },
+    ],
+  };
+
+  it.each([
+    ["returns the bound entry's name", "bbbb0002", "Beta"],
+    ["returns the active entry's name when nothing is bound", null, "Alpha"],
+    ["returns the id when the bound id is missing from the list", "cccc0003", "cccc0003"],
+  ])("%s", (_name, boundId, expected) => {
+    expect(presetNameFor(state, boundId)).toBe(expected);
+  });
 });
