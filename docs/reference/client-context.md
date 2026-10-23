@@ -450,6 +450,8 @@ couldn't validate (missing/malformed required fields) leaves both trigger-detail
 with no note/detail lines — the background marker still falls back to unnamed wording
 in that case (see below).
 
+Deprecated: removed in v0.6.0. Use `POST /signals`.
+
 ### Agent lifecycle (catchup burst)
 
 ```text
@@ -482,8 +484,8 @@ signal [calendar/sync @2026-08-23T01:36:40.000Z, id delivery-43]: (no payload)
 Signals are grouped by ingress batch. The headline counts items across all groups.
 Each item in an enveloped group renders with its normalized `source/event_type`, UTC
 occurrence time, and normalized event id. An enveloped group with no items renders one
-`(no payload)` line and contributes zero to the headline count. Envelope `delivery` is
-not rendered.
+`(no payload)` line and contributes zero to the headline count. Envelope `delivery` and
+`label` are not rendered.
 
 Signal items remain opaque, heterogeneous objects with no client-known shape, so JSON
 preserves their structure. Signal lines are independent of the headline and also appear
@@ -596,6 +598,8 @@ all situational detail still lives in the trigger lines above.
 | `signals.push` | `(a new signal just arrived for you)` |
 | `signals.batch` | `(a few signals batched up for you)` |
 | `signals.catchup` | `(signals piled up while I was away)` |
+| `signals.urgent` | `(something urgent just came in for you)` |
+| `signals.urgent_catchup` | `(urgent things piled up while I was away)` |
 | `time_milestone.first_activity` | `(I've just started my day)` |
 | any other | `(something just caught your attention)` |
 

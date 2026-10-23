@@ -13,7 +13,7 @@ chooses the character: `POST /signals` wakes the character of the main window, a
 is the same signal envelope in both cases; read `docs/reference/signals-ingress.md` in the
 YUI repository for its fields and the delivery rules.
 
-The ingress listens only while the user has turned on **Agent notifications** in YUI's
+The ingress listens only while the user has turned on **External signals** in YUI's
 Proactive tab, on the port shown there (default 8770), and a change of that switch or
 port takes effect after YUI restarts.
 
@@ -39,13 +39,16 @@ POST a JSON body with a `signals` array and an `envelope` object to the URL, wit
 curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' \
   -d '{"signals":[{"kind":"workflow","status":"complete"}],
        "envelope":{"source":"my-producer","event_type":"workflow_done",
-                   "delivery":"immediate","event_id":"run-1","occurred_at":1787449000000}}' \
+                   "delivery":"urgent","event_id":"run-1","occurred_at":1787449000000}}' \
   "$YUI_SIGNALS_URL"
 ```
 
-Pick `delivery` by how soon the character should speak: `immediate` speaks now if the
-user is present, `batched` waits for the next five-minute batch, `live` follows the user's
-presence. The character decides what to say; the signal carries facts, not a script.
+Pick `delivery` by how soon the character should speak: `urgent` speaks now if the user is
+present and the character is idle, and otherwise waits for their return or the end of the
+current turn; `batched` waits for the next five-minute batch. The character decides what
+to say; the signal carries facts, not a script. The producer guide covers the delivery
+classes, the label, and the event id:
+https://github.com/yw0nam/YUI/blob/main/docs/guide/signals-producer.md
 
 Done when: the response code is read.
 
@@ -56,10 +59,10 @@ Done when: the response code is read.
 | 200 | Accepted for the character | Nothing. The character speaks under the delivery rules. |
 | 404 | No preset has this id, or the path is wrong | Ask the user for the URL again (step 1). |
 | 503 | The preset exists but its window is closed | Ask the user to open the character's window (preset list → "Open window"), then send again. |
-| 400 | The body is not a valid envelope | Fix the body against the envelope table in `signals-ingress.md`. |
+| 400 | The body is not a valid envelope, or one signal item is over 16 KiB | Fix the body against the envelope table and the limits in `signals-ingress.md`. |
 | 405 | Wrong method | Use POST. |
 | 421 or 403 | The request did not come from this machine | Send from the same machine as YUI, or through an SSH tunnel to 127.0.0.1. |
-| connection refused | The ingress is off or YUI is not running | Ask the user to turn on Agent notifications and restart YUI. |
+| connection refused | The ingress is off or YUI is not running | Ask the user to turn on External signals and restart YUI. |
 
 Done when: the code is 200, or the user has been told the one action that the table names.
 
@@ -67,7 +70,7 @@ Done when: the code is 200, or the user has been told the one action that the ta
 
 1. Read its configured URL. A URL without `/presets/<id>/` wakes the main window's
    character; that is correct only when the user wants the default character.
-2. Send one `immediate` signal with `event_id` set to a fresh value and read the code
+2. Send one `urgent` signal with `event_id` set to a fresh value and read the code
    with the table above.
 3. If the wrong character spoke, the URL points at another preset: repeat step 1 of
    "Wake a character".

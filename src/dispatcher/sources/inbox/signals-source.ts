@@ -2,10 +2,10 @@
  * signals_source — grouped `signals` ingress firing source.
  *
  * Two buffered-inbox cores share the presence, busy, enable, and lifecycle skeleton: the
- * non-live core delivers `immediate`/`batched` groups behind the paced busy predicate, and
- * the live core delivers `live` groups (an activity the user started and is waiting on)
- * behind the raw busy predicate — a proactive gap never holds them. Each group routes to
- * exactly one core, so live and non-live groups never share a catch-up turn.
+ * non-urgent core delivers `immediate`/`batched` groups behind the paced busy predicate, and
+ * the urgent core delivers `urgent` groups (handle now) behind the raw busy predicate — a
+ * proactive gap never holds them. Each group routes to exactly one core, so urgent and
+ * non-urgent groups never share a catch-up turn.
  * This module owns envelope validation, delivery routing, buffer caps, and the lazy
  * batched-delivery timer. Signal item contents remain opaque.
  */
@@ -21,6 +21,7 @@ import { createBufferedInboxSource, type InboxFiring } from "./buffered-inbox-so
 const log = createLogger("signals-source");
 
 const BUFFER_CAP = 5;
+const LABEL_MAX = 120;
 const BATCH_INTERVAL_MS = 5 * 60_000;
 
 interface SignalsSourceDeps {
@@ -33,9 +34,9 @@ interface SignalsSourceDeps {
   /** Paced busy predicate for immediate/batched groups — the proactive gap reads as busy. */
   isPipelineBusy?: () => boolean;
   subscribePipelineBusy?: (cb: (busy: boolean) => void) => () => void;
-  /** Raw busy predicate for live groups — the proactive gap does not reach them. */
-  isLivePipelineBusy?: () => boolean;
-  subscribeLivePipelineBusy?: (cb: (busy: boolean) => void) => () => void;
+  /** Raw busy predicate for urgent groups — the proactive gap does not reach them. */
+  isUrgentPipelineBusy?: () => boolean;
+  subscribeUrgentPipelineBusy?: (cb: (busy: boolean) => void) => () => void;
 }
 
 export interface SignalsSource {
@@ -61,7 +62,8 @@ function validEnvelope(value: unknown): value is SignalEnvelope {
     envelope.event_type.length > 0 &&
     (envelope.delivery === "immediate" ||
       envelope.delivery === "batched" ||
-      envelope.delivery === "live") &&
+      envelope.delivery === "urgent") &&
+    (envelope.label === undefined || typeof envelope.label === "string") &&
     typeof envelope.event_id === "string" &&
     envelope.event_id.length > 0 &&
     typeof envelope.occurred_at === "number" &&
@@ -73,8 +75,9 @@ function validEnvelope(value: unknown): value is SignalEnvelope {
 export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
   const awayBuffer: BufferedGroup[] = [];
   const batchBuffer: BufferedGroup[] = [];
-  const liveBuffer: BufferedGroup[] = [];
+  const urgentBuffer: BufferedGroup[] = [];
   let nextSequence = 0;
+  let warnedImmediate = false;
   let batchTimer: ReturnType<typeof setTimeout> | undefined;
 
   function groupsInArrivalOrder(): SignalGroup[] {
@@ -95,6 +98,11 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
   }
 
   function appendCapped(buffer: BufferedGroup[], group: SignalGroup): void {
+    const same = buffer.find((entry) => entry.group.envelope.event_id === group.envelope.event_id);
+    if (same) {
+      same.group = group;
+      return;
+    }
     buffer.push({ sequence: nextSequence++, group });
     if (buffer.length > BUFFER_CAP) buffer.shift();
   }
@@ -109,7 +117,21 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
       log.warn("envelope_invalid", { dropped_items: raw.signals.length });
       return undefined;
     }
-    return { group: { envelope, items: raw.signals }, delivery: envelope.delivery };
+    // Deprecated: removed in v0.6.0. Use urgent or batched.
+    if (envelope.delivery === "immediate" && !warnedImmediate) {
+      warnedImmediate = true;
+      log.warn("deprecated", {
+        what: "delivery immediate",
+        removed_in: "v0.6.0",
+        use: "urgent or batched",
+      });
+    }
+    const { label } = envelope;
+    const cut =
+      label !== undefined && [...label].length > LABEL_MAX
+        ? { ...envelope, label: `${[...label].slice(0, LABEL_MAX - 1).join("")}…` }
+        : envelope;
+    return { group: { envelope: cut, items: raw.signals }, delivery: envelope.delivery };
   }
 
   // One inbox subscription feeds both cores: each arrival is parsed once, then routed by
@@ -152,8 +174,8 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
     return { event_name: "signals.push", payload: { signals: [item.group] } };
   }
 
-  function buildLiveDelivery(item: RoutedGroup): InboxFiring {
-    return { event_name: "signals.live", payload: { signals: [item.group] } };
+  function buildUrgentDelivery(item: RoutedGroup): InboxFiring {
+    return { event_name: "signals.urgent", payload: { signals: [item.group] } };
   }
 
   function armBatchTimer(): void {
@@ -189,28 +211,28 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
     return groups;
   }
 
-  const liveCore = createBufferedInboxSource<RoutedGroup, RoutedGroup>({
+  const urgentCore = createBufferedInboxSource<RoutedGroup, RoutedGroup>({
     bus: deps.bus,
     present_max_idle_ms: deps.present_max_idle_ms,
     isEnabled: deps.isEnabled,
-    onInbox: inboxFor((item) => item.delivery === "live"),
+    onInbox: inboxFor((item) => item.delivery === "urgent"),
     listen: deps.listen,
     now: deps.now,
-    isPipelineBusy: deps.isLivePipelineBusy,
-    subscribePipelineBusy: deps.subscribeLivePipelineBusy,
+    isPipelineBusy: deps.isUrgentPipelineBusy,
+    subscribePipelineBusy: deps.subscribeUrgentPipelineBusy,
     log,
     parse: (item) => item,
-    buildLive: buildLiveDelivery,
-    busSource: "live_signal_source",
-    bufferAdd: (item) => appendCapped(liveBuffer, item.group),
-    bufferEmpty: () => liveBuffer.length === 0,
+    buildLive: buildUrgentDelivery,
+    busSource: "urgent_signal_source",
+    bufferAdd: (item) => appendCapped(urgentBuffer, item.group),
+    bufferEmpty: () => urgentBuffer.length === 0,
     bufferClear: () => {
-      liveBuffer.length = 0;
+      urgentBuffer.length = 0;
     },
     // appendCapped appends in arrival order — the buffer needs no sort.
     buildCatchup: () => ({
-      event_name: "signals.live_catchup",
-      payload: { signals: liveBuffer.map(({ group }) => group) },
+      event_name: "signals.urgent_catchup",
+      payload: { signals: urgentBuffer.map(({ group }) => group) },
     }),
   });
 
@@ -218,7 +240,7 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
     bus: deps.bus,
     present_max_idle_ms: deps.present_max_idle_ms,
     isEnabled: deps.isEnabled,
-    onInbox: inboxFor((item) => item.delivery !== "live"),
+    onInbox: inboxFor((item) => item.delivery !== "urgent"),
     listen: deps.listen,
     now: deps.now,
     isPipelineBusy: deps.isPipelineBusy,
@@ -234,14 +256,15 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
   });
 
   async function start(): Promise<void> {
+    // Non-urgent first: an urgent turn opens the pacer gap that would drop the paced catch-up.
     await core.start();
-    await liveCore.start();
+    await urgentCore.start();
     armBatchTimer();
   }
 
   function stop(): void {
     core.stop();
-    liveCore.stop();
+    urgentCore.stop();
     clearBatchTimer();
   }
 
