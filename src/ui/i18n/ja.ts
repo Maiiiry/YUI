@@ -42,6 +42,9 @@ const ja: Record<string, string> = {
   "aria.dismiss_bubble": "吹き出しを閉じる",
   "bubble.you": "自分",
   "bubble.quote_attached": "添付 {count}件",
+  "bubble.sources_more": "+{n}件",
+  "signals.delivery_urgent": "緊急シグナル",
+  "signals.delivery_batched": "まとめて届いたシグナル",
   "aria.dock_message": "吹き出しをキャラクターに戻す",
   "aria.pop_message": "吹き出しをメッセージウィンドウへ",
   "aria.dismiss_error": "エラーを閉じる",
@@ -429,6 +432,7 @@ const ja: Record<string, string> = {
   "history.who_user": "あなた",
   "history.who_yui": "ユイ",
   "history.empty": "まだ会話がありません",
+  "history.signal_silent": "話さなかった",
   "history.foot": "直近200件のメッセージ · この端末にのみ保存",
 
   // TTS output toggle

@@ -20,6 +20,14 @@ export interface UserQuote {
   images: number;
 }
 
+/** One signal group as the bubble quotes it: its delivery class, its source, and its label. */
+export interface SourceLine {
+  delivery: "urgent" | "batched";
+  source: string;
+  /** The producer's label, or the event type when it gave none. */
+  text: string;
+}
+
 /** Pet → message: one call on the message window's local `Surfaces`. */
 export type MessageSurfaceOp =
   | { op: "begin" }
@@ -34,6 +42,7 @@ export type MessageSurfaceOp =
   | { op: "speech-action"; action?: { label: string } }
   | { op: "attachment-limits"; limits: AttachmentLimits }
   | { op: "quote"; quote: UserQuote }
+  | { op: "quote-signals"; lines: SourceLine[] }
   | { op: "settle-quote" }
   | { op: "clear-quote" }
   | { op: "restore-input"; text: string; images: string[] };
