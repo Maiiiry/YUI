@@ -61,6 +61,7 @@ export function wirePetControls(deps: {
   >;
   pushSocket: Pick<PushSocket, "getState" | "onState" | "sendReset" | "reconnectNow">;
   stopTurn: () => void;
+  announceSessionReset: () => void;
   presetRegistry: PresetRegistry;
   petWindows: PetWindows;
   boundId: string | null;
@@ -123,6 +124,7 @@ export function wirePetControls(deps: {
     lipsyncSettings,
     vadSettings,
     agentSettings,
+    userNameSettings,
     fillerSettings,
     endpointsSettings,
     chatKeySettings,
@@ -156,6 +158,7 @@ export function wirePetControls(deps: {
       mount: root,
       pushSocket,
       stopTurn,
+      announceSessionReset: deps.announceSessionReset,
       settings: screenshotSettings,
       idleThrottleSettings,
       gazeSettings,
@@ -186,6 +189,7 @@ export function wirePetControls(deps: {
       fillerSettings,
       ttsSettings,
       agentSettings,
+      userNameSettings,
       vrmSelection,
       swapVrm,
       importVrm,

@@ -81,6 +81,8 @@ export function wireDispatcher(deps: {
   overheardStore: ConversationStores["overheardStore"];
   relationsStore: ConversationStores["relationsStore"];
   agentSettings: SettingsStores["agentSettings"];
+  /** The assembled card for each turn; absent in a window that sends no card. */
+  getCardText?: () => { system: string; postHistory: string } | null;
   guardrailsSettings: SettingsStores["guardrailsSettings"];
   pacerGapSettings: SettingsStores["pacerGapSettings"];
   oneVoiceSettings: SettingsStores["oneVoiceSettings"];
@@ -129,6 +131,7 @@ export function wireDispatcher(deps: {
     overheardStore,
     relationsStore,
     agentSettings,
+    getCardText,
     guardrailsSettings,
     pacerGapSettings,
     oneVoiceSettings,
@@ -213,6 +216,7 @@ export function wireDispatcher(deps: {
     contextHistory,
     appendTurnRecord,
     getAgentSettings: () => agentSettings.get(),
+    getCardText,
     clientTools: turnTools,
     pushTurn: (frame) => pushSocket?.sendTurn(frame) ?? false,
     pushImageRoom: (frame) => pushSocket?.imageRoom(frame),
