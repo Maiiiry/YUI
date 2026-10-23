@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 pub const AGENT_INBOX_CHANNEL: &str = "agent-inbox";
@@ -15,6 +16,13 @@ const SUMMARY_MAX_BYTES: usize = 8192;
 const DETAIL_MAX_BYTES: usize = 16384;
 /// Hard body read ceiling; prevents OOM on oversized payloads.
 pub(super) const BODY_CEILING_BYTES: usize = 65536;
+
+/// The `/relations` record limits, as `docs/reference/signals-ingress.md` states them.
+const VALUE_RANGE: std::ops::RangeInclusive<i64> = -20..=20;
+const DELTA_RANGE: std::ops::RangeInclusive<i64> = -2..=2;
+const LOG_LENGTH: usize = 20;
+const WHY_CHARS: usize = 80;
+const NOTE_CHARS: usize = 200;
 
 /// Lifecycle phase of an external coding-agent session.
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,12 +104,59 @@ pub enum AvatarCommand {
     GoToBed,
 }
 
-/// A parsed `/avatar/*` request, ready to bridge into the webview.
+/// One logged change of a `/relations` record.
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct RelationChange {
+    at: u64,
+    delta: i64,
+    why: String,
+}
+
+/// One target's record in a `/relations` body.
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct RelationRecord {
+    value: i64,
+    updated_at: u64,
+    log: Vec<RelationChange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
+impl RelationRecord {
+    fn in_range(&self) -> bool {
+        VALUE_RANGE.contains(&self.value)
+            && self.log.len() <= LOG_LENGTH
+            && self
+                .note
+                .as_ref()
+                .is_none_or(|n| n.chars().count() <= NOTE_CHARS)
+            && self.log.iter().all(|c| {
+                c.delta != 0 && DELTA_RANGE.contains(&c.delta) && c.why.chars().count() <= WHY_CHARS
+            })
+    }
+}
+
+/// Validates a `PUT /relations` body; `Err(400)` for a shape or range the contract refuses.
+fn parse_relations(body: &str) -> Result<serde_json::Value, u16> {
+    let records: BTreeMap<String, RelationRecord> =
+        serde_json::from_str(body).map_err(|_| 400u16)?;
+    if !records.values().all(RelationRecord::in_range) {
+        return Err(400);
+    }
+    serde_json::to_value(records).map_err(|_| 400u16)
+}
+
+/// A parsed `/avatar/*` or `/relations` request, ready to bridge into the webview.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AvatarRoute {
     State,
     PerchTargets,
     Command(AvatarCommand),
+    RelationsGet,
+    /// The validated body that replaces the window's relation store.
+    RelationsPut(serde_json::Value),
 }
 
 impl AvatarRoute {
@@ -111,6 +166,8 @@ impl AvatarRoute {
             AvatarRoute::State => ("state", None),
             AvatarRoute::PerchTargets => ("perch_targets", None),
             AvatarRoute::Command(cmd) => ("command", serde_json::to_value(cmd).ok()),
+            AvatarRoute::RelationsGet => ("relations_get", None),
+            AvatarRoute::RelationsPut(body) => ("relations_put", Some(body)),
         }
     }
 
@@ -179,9 +236,9 @@ pub(super) fn parse_signals_request(
 
 /// Validates and parses a raw HTTP request into an `AvatarRoute`.
 ///
-/// Returns `Err(405)` for a known `/avatar/*` path with the wrong method, `Err(404)`
-/// for an unknown `/avatar/*` path, and `Err(400)` when the command body does not
-/// fit the route.
+/// Returns `Err(405)` for a known `/avatar/*` or `/relations` path with the wrong method,
+/// `Err(404)` for an unknown `/avatar/*` path, and `Err(400)` when the command or relations
+/// body does not fit the route.
 pub(super) fn parse_avatar_request(
     method: &str,
     path: &str,
@@ -196,6 +253,11 @@ pub(super) fn parse_avatar_request(
                 .map(AvatarRoute::Command)
                 .map_err(|_| 400u16)
         }),
+        "/relations" => match method {
+            "GET" => Ok(AvatarRoute::RelationsGet),
+            "PUT" => parse_relations(body).map(AvatarRoute::RelationsPut),
+            _ => Err(405),
+        },
         _ => Err(404),
     }
 }
@@ -764,6 +826,49 @@ mod tests {
 
     // ── RPC request payload ───────────────────────────────────────────────────
 
+    const RELATIONS_BODY: &str = r#"{"user":{"value":5,"updated_at":1787449000000,"log":[{"at":1787449000000,"delta":2,"why":"asked how my day was before the bug"}]},"aaaa0001":{"value":-6,"updated_at":1787430000000,"log":[],"note":"trusts the work, doubts the promises"}}"#;
+
+    #[test]
+    fn parse_avatar_relations_get_and_put() {
+        assert_eq!(
+            parse_avatar_request("GET", "/relations", "").unwrap(),
+            AvatarRoute::RelationsGet
+        );
+        assert_eq!(
+            parse_avatar_request("PUT", "/relations", RELATIONS_BODY).unwrap(),
+            AvatarRoute::RelationsPut(serde_json::from_str(RELATIONS_BODY).unwrap())
+        );
+        assert_eq!(
+            parse_avatar_request("POST", "/relations", RELATIONS_BODY).unwrap_err(),
+            405
+        );
+    }
+
+    #[test]
+    fn parse_avatar_relations_put_rejects_out_of_range() {
+        use serde_json::json;
+        let change = |delta: i64, why: String| json!({"at": 1, "delta": delta, "why": why});
+        let at_limits = json!({"user": {"value": -20, "updated_at": 1,
+            "log": vec![change(-2, "x".repeat(80)); 20], "note": "x".repeat(200)}});
+        assert!(parse_avatar_request("PUT", "/relations", &at_limits.to_string()).is_ok());
+        for body in [
+            json!({"user": {"value": 25, "updated_at": 1, "log": []}}),
+            json!({"user": {"value": 1, "updated_at": 1, "log": [change(3, "x".into())]}}),
+            json!({"user": {"value": 1, "updated_at": 1, "log": [change(0, "x".into())]}}),
+            json!({"user": {"value": 1, "updated_at": 1, "log": [change(1, "x".repeat(81))]}}),
+            json!({"user": {"value": 1, "updated_at": 1, "log": [], "note": "x".repeat(201)}}),
+            json!({"user": {"value": 1, "updated_at": 1, "log": vec![change(1, "x".into()); 21]}}),
+            json!({"user": {"value": 1, "updated_at": 1, "log": [], "mood": "x"}}),
+            json!("x"),
+        ] {
+            assert_eq!(
+                parse_avatar_request("PUT", "/relations", &body.to_string()).unwrap_err(),
+                400,
+                "{body}"
+            );
+        }
+    }
+
     #[test]
     fn avatar_route_maps_to_method_and_params() {
         let (method, params) = AvatarRoute::State.into_rpc();
@@ -782,6 +887,15 @@ mod tests {
         let params = params.unwrap();
         assert_eq!(params["action"], "peek");
         assert_eq!(params["side"], "right");
+
+        let (method, params) = AvatarRoute::RelationsGet.into_rpc();
+        assert_eq!(method, "relations_get");
+        assert!(params.is_none());
+
+        let body: serde_json::Value = serde_json::from_str(RELATIONS_BODY).unwrap();
+        let (method, params) = AvatarRoute::RelationsPut(body.clone()).into_rpc();
+        assert_eq!(method, "relations_put");
+        assert_eq!(params, Some(body));
     }
 
     #[test]

@@ -321,6 +321,9 @@ export interface PreviousTurn {
   unspoken?: string;
 }
 
+/** A relation value's band: hostile ≤ -12, cold ≤ -4, warm ≥ 4, close ≥ 12, neutral between. */
+export type RelationBand = "hostile" | "cold" | "neutral" | "warm" | "close";
+
 /**
  * Flat system-message context object. Carries environment, screenshot meta (no data_url),
  * body state and trigger — never carries user utterance text.
@@ -347,6 +350,17 @@ export interface ClientContext {
     preset: string;
     name: string;
     entries: { role: "user" | "assistant"; text: string; ts: number }[];
+  }[];
+  /** This character's relation toward each target the backend has rated; absent when none. */
+  relations?: {
+    /** `user` or the other preset's name. */
+    target: string;
+    band: RelationBand;
+    /** The last accepted change; 0 with an empty `why` when the record has no logged change. */
+    delta: number;
+    why: string;
+    at: number;
+    note?: string;
   }[];
   trigger: TriggerMeta;
 }

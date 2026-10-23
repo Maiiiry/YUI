@@ -38,6 +38,8 @@ YUI/
     app/                             # Composes the pet window from the layers below
       bootstrap-configured.ts        # Pet window's config-derived bootstrap: runs the turn core and the pet-only wirings in order and drains their teardowns
       disposers.ts                   # Shared teardown bag: registers teardowns at creation sites and drains them LIFO
+      relations/                     # This window's relations wiring
+        wire-relations.ts            # rate_relation's open-preset targets and the ingress relations RPC, over the window's store
       turn/                          # The path of a turn: sources, voice, and push
         turn-core.ts                 # The chat turn every backend-facing window runs: voice, dispatcher, STT, VRM load, vocabulary, broker, push transport, stop, and submit
         wire-dispatcher.ts           # Turn feed, backend caller, guardrails, pacer, and the dispatcher
@@ -327,7 +329,11 @@ YUI/
         active-preset.ts             # The registry's stored shape and the id a window resolves its keys under: the preset query, else the active preset
         bound-preset.ts              # The page queries that bind a window to one preset (`?preset=`) and name the preset a settings window edits (`?edit=`)
         preset-registry.ts           # Preset list and active preset under yui.presets: create, rename, remove, activate
-        pet-windows.ts               # The desired open set under yui.windows and the live key each window holds under yui.live-window.<label>
+        pet-windows.ts               # The desired open set under yui.windows, the open presets with names, and the live key each window holds under yui.live-window.<label>
+      relations/                     # Each preset's relation toward the user and the other presets
+        relations-store.ts           # The per-preset store under yui.<id>.relations: bands, the daily cap, the range clamp, and the read of another preset's store
+        relation-lines.ts            # The relation entries a turn carries: user first, then the other presets in registry order
+        relation-targets.ts          # The label a prompt line or the rate_relation enum shows for a preset: one named `user` is disambiguated
       panels/                        # Panel and window state
         delegation-chip-settings.ts  # Per-device fold state of the delegation chip
         message-window-settings.ts   # Message-window mode and last outer position under the window's preset key
@@ -352,7 +358,8 @@ YUI/
           execute.ts                   # The bounded execute both the request transports and the push consumer call
           express.ts                   # The generate_express tool
           avatar.ts                    # The body_action and look tools over the avatar executor
-          pet-window-tools.ts          # Builds the tool list a pet window declares: browser everywhere, body_action and look in main
+          relation.ts                  # The rate_relation tool: one accepted call per target per turn
+          pet-window-tools.ts          # Builds the tool list a pet window declares: rate_relation everywhere, browser under Tauri, body_action and look in main
         vocabulary/                    # The emotion, motion, and voice-tone ids the agent may cue with
           express-vocabulary.ts        # Derives the express vocabulary from the loaded config and the motion selection
         broker/                        # The Expression Broker client and its URL override reconciler
@@ -457,6 +464,7 @@ YUI/
         inbox/                         # The Tauri inbox seam, the channels read through it, and the preset ids the shell routes by
           avatar-rpc.ts                # Webview end of the loopback avatar RPC surface
           avatar-executor.ts           # Answers the avatar RPCs addressed to its own window from live client state
+          relations-rpc.ts             # Answers the relations RPCs from its own window's relation store
           agent-inbox.ts               # Subscribes to the Rust agent-inbox event channel
           signals-inbox.ts             # Subscribes to the Rust signals-inbox event channel
           preset-ids.ts                # sync_preset_ids: the registry's preset ids published to the shell for ingress routing
@@ -595,7 +603,15 @@ YUI/
           preset-strip.ts            # Active-preset picker, the switching state, and the tab scope lines it fills; in the settings window it picks the preset to edit (`?edit=`)
           preset-manage.ts           # Manage popover: rows with inline rename, delete confirm, the open or close window action, "Use in main" in the settings window (it switches main's preset), and the new-preset field
           preset-scope.ts            # Scope line text: the preset a tab edits, or that its settings are shared
-          preset.css                 # Strip, manage popover, and scope line styles
+          preset.css                 # Strip, manage popover, scope line, relation line, matrix, and reasons card styles
+          relations/                 # The relation line under the preset row, the relations matrix, and the reasons card
+            relations-section.ts     # Composes the three, re-renders on a write or a storage event, and moves the changed relations
+            matrix-open-state.ts     # The matrix disclosure's open state, per preset: the pet window and the settings window editing that preset share it
+            relation-glyph.ts        # The five-step glyph and its band motion, the relation chip, the direction mark, and the age text
+            relation-line.ts         # This preset's relation toward each rated target, and the matrix toggle
+            relations-matrix.ts      # Every preset's relation toward every target, and the newest change
+            reasons-card.ts          # The band, the engine's note, and the last three reasons of a hovered or focused relation
+            view.ts                  # What the three read: every listed preset's relations as stored now
         history/                     # History tab and its session accordion section
           history-tab.ts             # The History tab the desktop panel and the phone settings view share, with its start-fresh row
           history-section.ts         # History tab session accordion over the persisted transcript

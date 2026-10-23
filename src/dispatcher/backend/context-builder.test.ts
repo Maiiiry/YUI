@@ -137,6 +137,21 @@ describe("context builder — tool switches", () => {
   });
 });
 
+describe("context builder — relations", () => {
+  it("carries the relation entries from the provider, and omits the field when there are none", async () => {
+    const relations = [
+      { target: "user", band: "warm" as const, delta: 1, why: "stayed up", at: 7 },
+      { target: "perlica", band: "cold" as const, delta: -2, why: "took the chair", at: 8 },
+    ];
+
+    const rated = await buildContext(ENV, { getRelations: () => relations });
+    expect(rated.clientContext.relations).toEqual(relations);
+
+    const none = await buildContext(ENV, { getRelations: () => [] });
+    expect("relations" in none.clientContext).toBe(false);
+  });
+});
+
 describe("buildClientContext — cue forwarding", () => {
   const CTX: InputContext = { env: { timestamp: "2026-07-31T14:22:33+09:00", timezone: "UTC" } };
 

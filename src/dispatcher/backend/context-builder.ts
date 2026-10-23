@@ -23,6 +23,8 @@ interface ContextProviders {
   takeMessageWake?: () => boolean;
   /** The other presets' unheard lines, read once per turn. */
   getOverheard?: () => OverheardBlock[];
+  /** This character's relation toward each rated target, read once per turn. */
+  getRelations?: () => ClientContext["relations"];
 }
 
 interface BuiltContext {
@@ -315,6 +317,7 @@ export async function buildContext(
 
   const switches = providers.getToolSwitches?.();
   const overheard = providers.getOverheard?.() ?? [];
+  const relations = providers.getRelations?.();
   const clientContext = {
     ...buildClientContext(
       ctx,
@@ -328,6 +331,7 @@ export async function buildContext(
     ...(overheard.length
       ? { overheard: overheard.map(({ preset, name, entries }) => ({ preset, name, entries })) }
       : {}),
+    ...(relations?.length ? { relations } : {}),
   };
 
   return { ctx, clientContext, overheard };

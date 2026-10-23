@@ -62,7 +62,7 @@ pub(super) fn parse_route(method: &str, url: &str, body: &str) -> Result<Route, 
                 ts: epoch_ms(),
             })
         }
-        "/avatar/state" | "/avatar/perch-targets" | "/avatar/command" => {
+        "/avatar/state" | "/avatar/perch-targets" | "/avatar/command" | "/relations" => {
             RouteKind::Avatar(parse_avatar_request(method, &path, body)?)
         }
         _ => {
@@ -98,7 +98,8 @@ pub(super) struct Dispatch {
     pub kind: RouteKind,
 }
 
-/// Parses and resolves a request through injected window and registry lookups.
+/// Parses and resolves a request through injected window and registry lookups. A relations
+/// body may only name `user` and preset ids the registry holds.
 pub(super) fn dispatch(
     method: &str,
     url: &str,
@@ -111,8 +112,20 @@ pub(super) fn dispatch(
         Target::Main => false,
         Target::Preset(id) => window_exists(&pet_label(id)),
     };
+    let label = resolve_target(&route.target, exists, &is_known)?;
+    if let RouteKind::Avatar(AvatarRoute::RelationsPut(body)) = &route.kind {
+        for key in body
+            .as_object()
+            .into_iter()
+            .flat_map(|records| records.keys())
+        {
+            if key != "user" && !is_known(key)? {
+                return Err(400);
+            }
+        }
+    }
     Ok(Dispatch {
-        label: resolve_target(&route.target, exists, is_known)?,
+        label,
         kind: route.kind,
     })
 }
@@ -133,6 +146,12 @@ mod tests {
             ("GET", "/avatar/state", ""),
             ("GET", "/avatar/perch-targets", ""),
             ("POST", "/avatar/command", r#"{"action":"stand"}"#),
+            ("GET", "/relations", ""),
+            (
+                "PUT",
+                "/relations",
+                r#"{"user":{"value":1,"updated_at":1,"log":[]}}"#,
+            ),
         ] {
             assert!(matches!(
                 parse_route(method, path, body).unwrap().target,
@@ -204,6 +223,36 @@ mod tests {
         );
         assert_eq!(parse_route("POST", "/unknown", "").unwrap_err(), 400);
         assert_eq!(parse_route("GET", "/avatar/unknown", "").unwrap_err(), 404);
+        let record = r#"{"value":1,"updated_at":1,"log":[]}"#;
+        let known = |id: &str| Ok(id == "aaaa0001");
+        assert_eq!(
+            dispatch(
+                "PUT",
+                "/relations",
+                &format!(r#"{{"ghost":{record}}}"#),
+                known,
+                |_| false
+            )
+            .unwrap_err(),
+            400
+        );
+    }
+    #[test]
+    fn dispatches_a_valid_relations_put_to_main() {
+        let record = r#"{"value":1,"updated_at":1,"log":[]}"#;
+        let known = |id: &str| Ok(id == "aaaa0001");
+        assert_eq!(
+            dispatch(
+                "PUT",
+                "/relations",
+                &format!(r#"{{"user":{record},"aaaa0001":{record}}}"#),
+                known,
+                |_| false
+            )
+            .unwrap()
+            .label,
+            "main"
+        );
     }
     #[test]
     fn resolves_by_window_then_registry_without_main_fallback() {
