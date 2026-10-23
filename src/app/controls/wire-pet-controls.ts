@@ -22,6 +22,7 @@ import type { VoiceInputStatus } from "../../ui/chips/voice-input-status";
 import { subscribe as subscribeLocale } from "../../ui/i18n";
 import { createQuickControls } from "../../ui/quick-controls/quick-controls";
 import type { Surfaces } from "../../ui/surfaces/surfaces";
+import { wireCardIo } from "../card-io/wire-card-io";
 import { quickControlsConfigDefaults } from "../settings/config-defaults";
 import type { ConversationStores } from "../settings/conversation-stores";
 import type { wireSpeakerSelection, wireVrmSelection } from "../settings/wire-avatar";
@@ -209,6 +210,7 @@ export function wirePetControls(deps: {
       canManageVoices,
       canReuploadVoices,
       canPasteVoiceId,
+      ...wireCardIo(presetRegistry),
       onGainPreview: (mouthOpen) => renderer.setMouthOpen(mouthOpen),
       onGainPreviewEnd: () => renderer.stopMouth(),
       onOpenDevtools: openDevtools,

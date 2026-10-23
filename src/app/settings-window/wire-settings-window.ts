@@ -21,6 +21,7 @@ import type { PresetRegistry } from "../../settings/preset/preset-registry";
 import { createVoiceInputStatus } from "../../ui/chips/voice-input-status";
 import { subscribe as subscribeLocale, t } from "../../ui/i18n";
 import { createQuickControls } from "../../ui/quick-controls/quick-controls";
+import { wireCardIo } from "../card-io/wire-card-io";
 import { wireSettingsWindowSync } from "../cross-window/wire-cross-window";
 import type { Disposers } from "../disposers";
 import { wirePetWindowsSync } from "../pet-windows/wire-pet-windows-sync";
@@ -258,6 +259,7 @@ export async function wireSettingsWindow(deps: {
       canManageVoices,
       canReuploadVoices,
       canPasteVoiceId,
+      ...wireCardIo(presetRegistry),
       // Renderer in main window, pass gain preview via bridge → main window VRM mouth moves.
       onGainPreview: (mouthOpen) => bridge.emitMouthPreview(mouthOpen),
       onGainPreviewEnd: () => bridge.emitMouthPreview(null),

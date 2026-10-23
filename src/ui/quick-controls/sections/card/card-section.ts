@@ -9,15 +9,21 @@ import {
   EMPTY_CARD,
   type PersonaConfig,
 } from "../../../../config/validators/persona/types";
+import type { ImportedCard } from "../../../../io/assets/card/card-import";
 import { cardName, isUnnamedBuiltIn } from "../../../../io/chat/card/resolve-card";
 import type { Logger } from "../../../../logger";
 import type { createAgentSettings } from "../../../../settings/backend/agent-settings";
 import type { createUserNameSettings } from "../../../../settings/identity/user-name-settings";
-import { presetIdForWindow, readPresetName } from "../../../../settings/preset/active-preset";
+import {
+  presetIdForWindow,
+  readPresetName,
+  readPresetThumbnail,
+} from "../../../../settings/preset/active-preset";
 import type { PresetRegistry } from "../../../../settings/preset/preset-registry";
 import { getLocale, LOCALE_DISPLAY_NAMES, subscribe as subscribeLocale, t } from "../../../i18n";
 import { CARD_GUIDE_URL } from "../../constants";
 import { escapeAttr, secHeadHtml } from "../../markup";
+import { createCardIo } from "./card-io";
 import "./card-section.css";
 
 type TextField =
@@ -77,7 +83,7 @@ export function cardSectionHtml(): string {
             </div>
           </div>
           <div class="yui-card-body">
-            <div class="yui-group">${inputRowHtml("yui-card-name", "card.name", 'data-card-field="name"')}${stackHtml("description", "card.description", 4)}${stackHtml("personality", "card.personality", 2)}${stackHtml("scenario", "card.scenario", 2)}${stackHtml("first_mes", "card.greeting", 2)}
+            <div class="yui-group"><div class="yui-card__namerow"><img class="yui-card-thumb" alt="" hidden />${inputRowHtml("yui-card-name", "card.name", 'data-card-field="name"')}</div>${stackHtml("description", "card.description", 4)}${stackHtml("personality", "card.personality", 2)}${stackHtml("scenario", "card.scenario", 2)}${stackHtml("first_mes", "card.greeting", 2)}
               <div class="yui-row yui-row--action yui-card-add-row">
                 <button class="yui-add-btn yui-card-add" type="button">${PLUS_SVG}${t("card.greeting_add")}</button>
               </div>
@@ -91,6 +97,12 @@ export function cardSectionHtml(): string {
             <div class="yui-group yui-group--you">${inputRowHtml("yui-card-username", "card.user_name", "", "card.user_name_sub")}
             </div>
           </div>
+          <div class="yui-row yui-row--action yui-card__io">
+            <button class="yui-link-btn yui-card-import" type="button">${t("card.import")}</button>
+            <button class="yui-link-btn yui-card-export" type="button">${t("card.export")}</button>
+          </div>
+          <p class="yui-row__sub yui-card__io-note">${t("card.io_note")}</p>
+          <p class="yui-card__io-error" role="status" hidden></p>
         </div>`;
 }
 
@@ -110,6 +122,10 @@ interface CardSectionDeps {
   isPushMode: () => boolean;
   /** Popover open state: store subscriptions redraw only while the panel is open. */
   isOpen: () => boolean;
+  /** Card file steps and the preset creator, wired by the app layer. */
+  importCard: () => Promise<ImportedCard | null>;
+  exportCard: (text: string, fileName: string) => Promise<"written" | "cancelled">;
+  createPresetFromCard: (card: Card, thumbnailTempId?: string) => Promise<string>;
   log: Logger;
 }
 
@@ -136,7 +152,7 @@ export function createCardSection(deps: CardSectionDeps): CardSection {
 
   const entry = () => {
     const id = presetIdForWindow();
-    return { id, name: readPresetName(id) };
+    return { id, name: readPresetName(id), thumbnail: readPresetThumbnail(id) };
   };
   // The default card of the UI language: what a first edit starts from.
   const base = (): Card => getPersona?.()?.cards[getLocale()] ?? EMPTY_CARD;
@@ -154,12 +170,16 @@ export function createCardSection(deps: CardSectionDeps): CardSection {
     const a = agentSettings.get();
     const card = a.card ?? base();
     const own = a.card !== null;
+    const shown = entry();
+    const thumb = q<HTMLImageElement>(".yui-card-thumb");
+    thumb.hidden = !shown.thumbnail;
+    if (shown.thumbnail) thumb.src = shown.thumbnail;
     switchBtn.setAttribute("aria-checked", String(a.send_card));
     body.hidden = !a.send_card;
     stateEl.hidden = !a.send_card || own;
     stateEl.textContent = t("card.default_state", { language: LOCALE_DISPLAY_NAMES[getLocale()] });
     resetBtn.hidden = !a.send_card || !own;
-    if (nameEl.getAttribute("aria-invalid") !== "true") setValue(nameEl, cardName(card, entry()));
+    if (nameEl.getAttribute("aria-invalid") !== "true") setValue(nameEl, cardName(card, shown));
     for (const el of fields) setValue(el, card[el.dataset.cardField as TextField]);
     const list = card.alternate_greetings;
     if (greetings().length !== list.length) {
@@ -174,6 +194,18 @@ export function createCardSection(deps: CardSectionDeps): CardSection {
   }
 
   const currentCard = (): Card => agentSettings.get().card ?? base();
+
+  const io = createCardIo({
+    errorEl: q<HTMLElement>(".yui-card__io-error"),
+    ports: {
+      importCard: deps.importCard,
+      exportCard: deps.exportCard,
+      createPresetFromCard: deps.createPresetFromCard,
+    },
+    currentCard,
+    entry,
+    log,
+  });
 
   function setGreetings(next: string[]): void {
     agentSettings.updateCard({ alternate_greetings: next }, base());
@@ -214,6 +246,10 @@ export function createCardSection(deps: CardSectionDeps): CardSection {
 
   function handleClick(e: MouseEvent): void {
     const target = e.target as HTMLElement;
+    if (target.closest(".yui-card__io")) {
+      io.handle(e);
+      return;
+    }
     if (target.closest(".yui-card-switch")) {
       const enabled = !agentSettings.get().send_card;
       agentSettings.setSendCard(enabled);

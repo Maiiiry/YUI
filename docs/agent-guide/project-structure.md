@@ -161,7 +161,8 @@ YUI/
         guardrails.ts                # The guardrails.json debounce, rate-limit, and attachment-cap types and their validation
         hotkeys.ts                   # The hotkeys.json summon-accelerator type and its validation
         motions.ts                   # Validates the motion registry
-        persona/                     # The card type, the V1/V2/V3 card reader, and the persona.json validation
+        persona/                     # The card type, the V1/V2/V3 card reader, the V2 export envelope, and the persona.json validation
+          serialize-card.ts           # The card as a chara_card_v2 envelope for export
         screen.ts                    # The screen.json type and the validation of its frontmost-transition thresholds
         shared.ts                    # Shared ConfigError plus issue-recording helpers
     renderer/                        # three.js + VRM rendering
@@ -333,7 +334,8 @@ YUI/
         preset-keys.ts               # The per-preset key list and where a key lives under a given preset
         active-preset.ts             # The registry's stored shape and the id a window resolves its keys under: the preset query, else the active preset
         bound-preset.ts              # The page queries that bind a window to one preset (`?preset=`) and name the preset a settings window edits (`?edit=`)
-        preset-registry.ts           # Preset list and active preset under yui.presets: create, rename, remove, activate
+        preset-registry.ts           # Preset list and active preset under yui.presets: create, rename, remove, activate, setThumbnail
+        import-card-preset.ts        # Creates a preset from an imported card and rolls it back on any failure
         pet-windows.ts               # The desired open set under yui.windows, the open presets with names, and the live key each window holds under yui.live-window.<label>
       relations/                     # Each preset's relation toward the user and the other presets
         relations-store.ts           # The per-preset store under yui.<id>.relations: bands, the daily cap, the range clamp, and the read of another preset's store
@@ -483,6 +485,10 @@ YUI/
           create-inbox.ts              # Generic Tauri event-channel subscription seam
       assets/
         vrm-import.ts                  # VRM import: OS picker, native copy, avatar-option registration
+        card/                          # The card's file steps: import, export, and the thumbnail URL
+          card-import.ts               # Card import: OS picker, native read/parse, rollback of the temp thumbnail
+          card-thumbnail.ts            # Thumbnail retain (temp id → preset id) and remove, through the shell
+          card-export.ts               # Card export: OS save dialog, native write, and the export file-name sanitizer
         user-asset-import.ts           # Dialog result shape, lazy Tauri loaders, and orphan cleanup shared by the voice and VRM imports
         vrm-selection.ts               # Owns the active VRM selection
         selection-store.ts             # Generic selection store behind VRM and speaker selection
@@ -718,6 +724,7 @@ YUI/
       import_fs.rs                   # Shared import filesystem helpers: sanitize, hash, dest stem candidates, bounded streamed copy, signature sniff
       vrm_import.rs                  # Native copy of a user-picked .vrm into app data
       voice_import.rs                # Native copy of a user-picked reference clip into app data
+      card_import.rs                 # Card file import (JSON or a PNG's tEXt card JSON), the thumbnail copy, and the exported card write
       tray.rs                        # System tray menu and its show and hide actions
       os_event_watcher/
         mod.rs                       # OS polling loop that emits os_event to the webview

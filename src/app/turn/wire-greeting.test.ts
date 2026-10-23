@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_CARD } from "../../config/validators/persona/types";
 import { createChatHistoryStore } from "../../io/chat/conversation/chat-history-store";
 import { wireGreeting } from "./wire-greeting";
+
+afterEach(() => vi.unstubAllGlobals());
 
 function setup() {
   const calls: string[] = [];
@@ -32,5 +34,16 @@ describe("wireGreeting", () => {
     const { calls, fire } = setup();
     fire("p1");
     expect(calls).toEqual(["stopTurn", "speak:Hi."]);
+  });
+
+  it("greets once at wire time when the import's pending marker is set, and consumes it", () => {
+    const map = new Map([["yui.p1.greeting-pending", "1"]]);
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => map.get(k) ?? null,
+      removeItem: (k: string) => map.delete(k),
+    });
+    const { calls } = setup();
+    expect(calls).toEqual(["speak:Hi."]);
+    expect(map.has("yui.p1.greeting-pending")).toBe(false);
   });
 });
