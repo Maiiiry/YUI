@@ -21,6 +21,7 @@
     "format": "biome format --write",
     "map:check": "node scripts/ci/architecture-map.mjs",
     "css:check": "node scripts/ci/css-selectors.mjs",
+    "logger:check": "node scripts/ci/logger-namespace.mjs",
     "map:base": "node scripts/architecture-map-base.mjs"
   },
   "devDependencies": {

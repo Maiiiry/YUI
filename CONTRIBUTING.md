@@ -116,7 +116,9 @@ crosses an exchange, follows all four.
   exist;
 - a source file is inside no part's path, or a folder sits beside the folders
   of other parts and belongs to none. Source files are `.ts` and `.rs` files
-  for the client map and `.py` files for the plugin map;
+  for the client map and `.py` files for the plugin map. A new part inside a
+  folder one part already claims therefore needs every sibling folder to be a
+  part too; otherwise the new file joins the claiming part;
 - a part, a link, an exchange, or a flow step names a missing id, or an id is
   used twice;
 - a link has no exchange in its direction, or a flow step cites an exchange

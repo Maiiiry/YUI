@@ -45,3 +45,6 @@ resources/references/
 witness/
 
 map.base.js
+
+# Git worktrees for parallel branches (CONTRIBUTING.md); biome reads this file and skips them
+.worktrees/

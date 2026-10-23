@@ -28,6 +28,7 @@ jobs:
       - run: pnpm test # vitest run
       - run: pnpm map:check # architecture map matches the tree
       - run: pnpm css:check # one owner per bare class selector across src/**/*.css
+      - run: pnpm logger:check # createLogger namespace equals the file name
       - run: pnpm docs:build # vitepress build + dead-link check
 
   web-windows-python:
@@ -150,6 +151,7 @@ jobs:
   rust:
     name: rust (cargo test)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
