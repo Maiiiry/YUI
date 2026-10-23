@@ -197,8 +197,8 @@ const en: Record<string, string> = {
   "preset.scope_shared": "Shared by every preset",
   "relation.group": "How {name} feels",
   "relation.to_you": "you",
-  "relation.matrix": "Relations between every preset",
-  "relation.matrix_table": "Who feels what about whom",
+  "relation.none": "No one rated yet",
+  "relation.more": "{n} more, not open now",
   "relation.band.hostile": "hostile",
   "relation.band.cold": "cold",
   "relation.band.neutral": "neutral",
@@ -206,9 +206,7 @@ const en: Record<string, string> = {
   "relation.band.close": "close",
   "relation.rose": "rose",
   "relation.fell": "fell",
-  "relation.latest": "{subject}, about {target}, {age}:",
   "relation.card_head": "{subject}: {band} to {target}",
-  "relation.unrated": "{subject} has not rated {target}",
 
   // reasoning effort segment
   "reasoning.label": "Reasoning effort",

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-// The relation line, the relations matrix and the reasons card, through the preset strip.
+// The relation line and the reasons card, through the preset strip.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPetWindows, type PetWindows } from "../../../settings/preset/pet-windows";
 import {
   createPresetRegistry,
   type PresetRegistry,
@@ -42,17 +43,17 @@ describe("preset strip — relations", () => {
   let store: RelationsStore;
   let strip: PresetStrip;
 
-  function build(relations: Relations = OWN): void {
+  function build(relations: Relations = OWN, petWindows?: PetWindows): void {
     strip?.dispose();
     store?.dispose();
     store = createRelationsStore({ storage: { load: () => relations, save: () => {} } });
     root.innerHTML = `${presetStripHtml()}<div class="yui-quick__cols"></div>`;
     const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    strip = createPresetStrip({ root, registry, log, relationsStore: store });
+    strip = createPresetStrip({ root, registry, log, petWindows, relationsStore: store });
   }
 
   const relations = (scope: string) =>
-    [...root.querySelectorAll<HTMLElement>(`${scope} .yui-relation`)].map((s) => ({
+    [...root.querySelectorAll<HTMLElement>(`${scope} .yui-relation[data-target]`)].map((s) => ({
       target: s.dataset.target,
       band: s.querySelector<HTMLElement>(".yui-glyph")?.dataset.band,
       name: s.querySelector(".yui-relation__to")?.textContent,
@@ -70,16 +71,6 @@ describe("preset strip — relations", () => {
           { id: "aaaa0001", name: "perlica" },
           { id: "bbbb0002", name: "shino" },
         ],
-      }),
-    );
-    localStorage.setItem(
-      "yui.aaaa0001.relations",
-      JSON.stringify({
-        default: {
-          value: 13,
-          updated_at: NOW - 10 * 60_000,
-          log: [{ at: NOW - 10 * 60_000, delta: 2, why: "gave the chair back" }],
-        },
       }),
     );
     setLocale("en");
@@ -100,7 +91,6 @@ describe("preset strip — relations", () => {
   it("lists this preset's relation toward each rated target, user first", () => {
     const line = root.querySelector<HTMLElement>(".yui-preset__rel")!;
 
-    expect(line.hidden).toBe(false);
     expect(line.getAttribute("aria-label")).toBe("How natsume feels");
     expect(relations(".yui-preset__rel")).toEqual([
       { target: "user", band: "warm", name: "you" },
@@ -108,21 +98,19 @@ describe("preset strip — relations", () => {
     ]);
   });
 
-  it("hides the line while no preset has a record", () => {
-    localStorage.removeItem("yui.aaaa0001.relations");
-    build({});
-
-    expect(root.querySelector<HTMLElement>(".yui-preset__rel")!.hidden).toBe(true);
-  });
-
-  it("keeps the matrix closed while the line is hidden", () => {
-    localStorage.setItem("yui.relations-matrix-open", "true");
-    localStorage.removeItem("yui.aaaa0001.relations");
+  it("shows the empty sentence while this preset has no record, and the chip once it rates someone", () => {
     build({});
 
     expect(
-      root.querySelector<HTMLElement>(".yui-preset__matrix")!.classList.contains("is-open"),
-    ).toBe(false);
+      root.querySelector<HTMLElement>(".yui-preset__rel")!.querySelector(".yui-preset__rel-empty")
+        ?.textContent,
+    ).toBe("No one rated yet");
+
+    store.rate("user", 2, "said hello", NOW);
+    const line = root.querySelector<HTMLElement>(".yui-preset__rel")!;
+
+    expect(line.querySelector(".yui-preset__rel-empty")).toBeNull();
+    expect(line.querySelectorAll(".yui-relation[data-target]")).toHaveLength(1);
   });
 
   it("adds a relation as soon as this preset rates a new target", () => {
@@ -130,45 +118,83 @@ describe("preset strip — relations", () => {
 
     expect(relations(".yui-preset__rel").map((s) => s.target)).toEqual([
       "user",
-      "aaaa0001",
       "bbbb0002",
+      "aaaa0001",
     ]);
   });
 
-  it("opens the matrix from the chevron and keeps it open across a rebuild", () => {
-    const toggle = () => root.querySelector<HTMLButtonElement>(".yui-preset__rel-more")!;
-    const matrix = () => root.querySelector<HTMLElement>(".yui-preset__matrix")!;
-
-    toggle().click();
-    expect(matrix().classList.contains("is-open")).toBe(true);
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
-
-    build();
-    expect(matrix().classList.contains("is-open")).toBe(true);
-    toggle().click();
-    expect(matrix().classList.contains("is-open")).toBe(false);
-    expect(toggle().getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("shows every preset's relations in the matrix and names the newest change", () => {
-    const rows = [...root.querySelectorAll(".yui-matrix tbody tr")];
-
-    expect(rows.map((r) => r.querySelector("th")?.textContent)).toEqual([
-      "natsume",
-      "perlica",
-      "shino",
-    ]);
-    expect(relations(".yui-matrix tbody tr:nth-child(1)").map((s) => [s.target, s.band])).toEqual([
-      ["user", "warm"],
-      ["aaaa0001", "cold"],
-    ]);
-    expect(relations(".yui-matrix tbody tr:nth-child(2)").map((s) => [s.target, s.band])).toEqual([
-      ["default", "close"],
-    ]);
-    expect(rows[2]!.querySelectorAll("td.is-empty")).toHaveLength(3);
-    expect(root.querySelector(".yui-matrix__latest")?.textContent).toBe(
-      "rose: perlica, about natsume, 10min: gave the chair back",
+  it("orders the rated targets by value after the user, close first", () => {
+    registry.dispose();
+    localStorage.setItem(
+      "yui.presets",
+      JSON.stringify({
+        active: "default",
+        list: [
+          { id: "default", name: "natsume" },
+          { id: "aaaa0001", name: "perlica" },
+          { id: "bbbb0002", name: "shino" },
+          { id: "cccc0003", name: "ilta" },
+        ],
+      }),
     );
+    registry = createPresetRegistry();
+    build({
+      user: { value: 5, updated_at: NOW - HOUR, log: [] },
+      aaaa0001: { value: 2, updated_at: NOW - HOUR, log: [] },
+      bbbb0002: { value: 12, updated_at: NOW - HOUR, log: [] },
+      cccc0003: { value: -5, updated_at: NOW - HOUR, log: [] },
+    });
+
+    expect(
+      [...root.querySelectorAll<HTMLElement>(".yui-preset__rel .yui-relation[data-target]")].map(
+        (s) => s.dataset.target,
+      ),
+    ).toEqual(["user", "bbbb0002", "aaaa0001", "cccc0003"]);
+  });
+
+  it("folds the rated targets whose window is closed behind a +N chip", () => {
+    const petWindows = createPetWindows({
+      storage: { load: () => ({ open: ["aaaa0001"] }), save: () => {} },
+    });
+    const seed = {
+      user: { value: 5, updated_at: NOW - HOUR, log: [] },
+      aaaa0001: { value: 8, updated_at: NOW - HOUR, log: [] },
+      bbbb0002: { value: -3, updated_at: NOW - HOUR, log: [] },
+    };
+    try {
+      build(seed, petWindows);
+      const line = root.querySelector<HTMLElement>(".yui-preset__rel")!;
+      const more = line.querySelector<HTMLButtonElement>(".yui-relation--more")!;
+
+      expect(relations(".yui-preset__rel").map((s) => s.target)).toEqual([
+        "user",
+        "aaaa0001",
+        "bbbb0002",
+      ]);
+      expect(
+        line.querySelector('.yui-relation[data-target="aaaa0001"]')?.hasAttribute("data-folded"),
+      ).toBe(false);
+      expect(
+        line.querySelector('.yui-relation[data-target="bbbb0002"]')?.hasAttribute("data-folded"),
+      ).toBe(true);
+      expect(line.classList.contains("is-unfolded")).toBe(false);
+      expect(more.textContent).toBe("+1");
+      expect(more.getAttribute("aria-label")).toBe("1 more, not open now");
+
+      more.click();
+      expect(line.classList.contains("is-unfolded")).toBe(true);
+      expect(more.getAttribute("aria-expanded")).toBe("true");
+
+      // The next render on the same strip folds again; a store write triggers one.
+      store.rate("user", 1, "kept a promise", NOW);
+      const next = root.querySelector<HTMLElement>(".yui-preset__rel")!;
+      expect(next.classList.contains("is-unfolded")).toBe(false);
+      expect(
+        next.querySelector<HTMLButtonElement>(".yui-relation--more")!.getAttribute("aria-expanded"),
+      ).toBe("false");
+    } finally {
+      petWindows.dispose();
+    }
   });
 
   it("fills the reasons card on hover and closes it on Escape", () => {
