@@ -160,6 +160,8 @@ The PR that deprecates a path keeps it working and adds:
   log.warn("deprecated", { what: "broker_base_url", removed_in: "v0.6.0", use: "client-declared tools" });
   ```
 
+  One test pins it: two uses log one `deprecated` warning with these fields.
+
 - **A doc line.** The doc that describes the path states the removal release
   and the replacement.
 - **The `deprecation` label** on the PR, which lists it under **Deprecations**
