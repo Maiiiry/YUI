@@ -10,6 +10,7 @@ import type {
   createSpeakerSelection,
   SpeakerOption,
 } from "../../io/voice/voices/speaker-selection";
+import type { PickedVoiceImport } from "../../io/voice/voices/voice-import-flow";
 import { createExpressMotionSettings } from "../../settings/avatar/express-motion-settings";
 import { createIdleMotionSettings } from "../../settings/avatar/idle-motion-settings";
 import { createLipsyncSettings } from "../../settings/avatar/lipsync-settings";
@@ -482,8 +483,8 @@ describe("createQuickControls — cue-list tab layout", () => {
   let speakerSelection: ReturnType<typeof createSpeakerSelection>;
   let swapSpeaker: Mock<(option: SpeakerOption) => Promise<void>>;
   let refreshSpeaker: Mock<(option: SpeakerOption) => Promise<void>>;
-  let pickVoiceImport: Mock<() => Promise<{ srcPath: string; seedName: string } | null>>;
-  let commitVoiceImport: Mock<(srcPath: string, name: string) => Promise<void>>;
+  let pickVoiceImport: Mock<() => Promise<PickedVoiceImport | null>>;
+  let commitVoiceImport: Mock<(stagedId: string, name: string) => Promise<void>>;
   let removeVoice: Mock<(id: string) => Promise<void>>;
 
   beforeEach(() => {
@@ -520,10 +521,8 @@ describe("createQuickControls — cue-list tab layout", () => {
     });
     // refresh is server-side only — default fake resolves without touching the store.
     refreshSpeaker = vi.fn<(option: SpeakerOption) => Promise<void>>(async () => {});
-    pickVoiceImport = vi.fn<() => Promise<{ srcPath: string; seedName: string } | null>>(
-      async () => null,
-    );
-    commitVoiceImport = vi.fn<(srcPath: string, name: string) => Promise<void>>(async () => {});
+    pickVoiceImport = vi.fn<() => Promise<PickedVoiceImport | null>>(async () => null);
+    commitVoiceImport = vi.fn<(stagedId: string, name: string) => Promise<void>>(async () => {});
     removeVoice = vi.fn<(id: string) => Promise<void>>(async () => {});
     try {
       globalThis.localStorage?.clear();

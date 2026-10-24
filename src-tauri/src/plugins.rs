@@ -6,9 +6,9 @@ pub fn register<R: Runtime>(builder: Builder<R>) -> Builder<R> {
     let builder = builder
         // Window.fetch routed to Rust → CORS bypass + SSE streaming support (plugin-http doesn't support streaming).
         .plugin(tauri_plugin_cors_fetch::init())
-        // Opens the picked VRM: a path on desktop, a content URI on Android.
+        // Used only in Rust, by open_and_import, to read a picked file.
         .plugin(tauri_plugin_fs::init())
-        // OS file picker — bring-your-own VRM import.
+        // OS file pickers — the import/export commands open them in Rust.
         .plugin(tauri_plugin_dialog::init())
         // Bubble links (target=_blank) open in the default browser.
         .plugin(tauri_plugin_opener::init());
