@@ -216,7 +216,7 @@ When the window's preset changes a relation, the glyph's new segments grow from 
 - **Do** micro-tint every neutral toward amber (chroma ~0.005–0.016) in OKLCH; never `#000`/`#fff`.
 - **Do** keep Hearth Amber ≤10% of a surface, ignited only in *moments* (active input, speech onset, hover, the message window's waiting glow).
 - **Do** give a floating surface its own dark scrim plus light text for legibility on any background, and only where legibility is needed (the speech bubble), never decoratively.
-- **Do** keep motion Responsive: smooth enter/exit and feedback on an ease-out exponential curve, attenuated under `prefers-reduced-motion`.
+- **Do** keep motion Responsive: smooth enter/exit and feedback on an ease-out exponential curve, attenuated under `prefers-reduced-motion`. A pulse that runs on a loop (the status pill's dot, the name plate's breath, the input's ember) reverses on every cycle, so it alone runs `ease-in-out`; every enter, exit and feedback curve stays ease-out.
 - **Do** stay flat, adding the single Float shadow only when a surface lifts.
 - **Do** lay the settings panel out as titled sections of borderless groups with hairline-split rows, and keep its selection neutral. Amber stays on switches, focus and hover.
 - **Do** keep controls off the text: the bubble's buttons ride its top edge, outside the scrolling box — the one exception is the speech action button, which sits under the text as an inline link, not as chrome.
@@ -230,4 +230,4 @@ When the window's preset changes a relation, the glyph's new segments grow from 
 - **Don't** use colored side-stripe borders (an accent or status color line >1px on one edge), gradient text (`background-clip: text`), identical card grids, or modal-first patterns.
 - **Don't** put uppercase or letter-spaced eyebrow labels, per-row bordered cards, or dashed add buttons in the settings panel.
 - **Don't** use amber as a fill: warmth is a point, not a plane (the 10% Warmth Rule). The one fill is the count badge on the folded delegation chip, a 1rem dot sized as a point so a pending count stays visible over any desktop.
-- **Don't** import decorative asset packs (3D icons, hand-drawn illustrations) or spring/bounce motion presets; icons are inline line glyphs (the Two-Stroke Rule) and motion is ease-out only.
+- **Don't** import decorative asset packs (3D icons, hand-drawn illustrations) or spring/bounce motion presets; icons are inline line glyphs (the Two-Stroke Rule) and motion is ease-out only, the looping pulses named above excepted.
