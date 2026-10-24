@@ -74,6 +74,7 @@ A `batched` group always waits in the batch buffer. The first group starts a fiv
 delivery interval. At the interval boundary, all pending batched groups fire together
 when signals are enabled, the user is present, and the pipeline is idle. If those
 conditions are not met, the groups remain buffered without another timer.
+A batched group that misses its deadline leaves on the next edge.
 
 An `immediate` group fires at once while the user is present and the pipeline is idle.
 Otherwise it waits in the away buffer. Deprecated: removed in v0.6.0. Use `urgent` or
@@ -91,6 +92,8 @@ Three client-fired turns also drain the buffers and carry the groups themselves:
 `proactive.wake` turn that carries the day's first activity. Each takes every pending
 non-urgent group in arrival order, and a drain empties the away buffer and the batch
 buffer together.
+
+A turn dropped before its backend call (by the proactive quiet gap, a guardrail, the user's message while it waits, a stale queue entry, or a degraded backend), a push the bus refuses, or a call that failed in transport or at the backend puts its groups back at the front of their buffers, and the next edge or drain delivers them. A turn the user's message cancels after its call started does not.
 
 Each buffer retains at most five groups and drops its oldest group on overflow.
 

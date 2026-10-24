@@ -2348,6 +2348,24 @@ globalThis.YUI_MAP =
       "wiring": "src/app/turn/wire-sources.ts"
     },
     {
+      "id": "drop-restore",
+      "from": "dispatcher",
+      "to": "dispatcher/sources/inbox",
+      "carries": "onTurnDropped(env) → restore",
+      "kind": "call",
+      "transport": "shared",
+      "wiring": "src/app/bootstrap-configured.ts"
+    },
+    {
+      "id": "bus-drop-restore",
+      "from": "dispatcher/core",
+      "to": "dispatcher/sources/inbox",
+      "carries": "onDrop(env) of a refused push → restore",
+      "kind": "call",
+      "transport": "shared",
+      "wiring": "src/windows/main.ts"
+    },
+    {
       "id": "pacer-inbox",
       "from": "dispatcher/core",
       "to": "dispatcher/sources/inbox",

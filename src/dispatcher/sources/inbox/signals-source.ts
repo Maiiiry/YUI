@@ -15,7 +15,8 @@ import type { SignalsBatch } from "../../../io/bridge/inbox/signals-inbox";
 import { onSignalsInbox } from "../../../io/bridge/inbox/signals-inbox";
 import type { OsEventListen } from "../../../io/window/tauri-listen";
 import { createLogger } from "../../../logger";
-import type { EventBus } from "../../core/event-bus";
+import { signalsOf } from "../../backend/context-builder";
+import type { BusEnvelope, EventBus } from "../../core/event-bus";
 import { createBufferedInboxSource, type InboxFiring } from "./buffered-inbox-source";
 
 const log = createLogger("signals-source");
@@ -45,6 +46,7 @@ export interface SignalsSource {
   start(): Promise<void>;
   stop(): void;
   drain(): SignalGroup[];
+  restore(env: BusEnvelope): void;
 }
 
 type RoutedGroup = {
@@ -79,6 +81,7 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
   const batchBuffer: BufferedGroup[] = [];
   const urgentBuffer: BufferedGroup[] = [];
   let nextSequence = 0;
+  let frontSequence = 0;
   let warnedImmediate = false;
   let batchTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -194,14 +197,16 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
     }, BATCH_INTERVAL_MS);
   }
 
+  function bufferFor(delivery: SignalEnvelope["delivery"]): BufferedGroup[] {
+    if (delivery === "urgent") return urgentBuffer;
+    return delivery === "batched" ? batchBuffer : awayBuffer;
+  }
+
   function bufferAdd(item: RoutedGroup): void {
-    if (item.delivery === "batched") {
-      const wasEmpty = batchBuffer.length === 0;
-      appendCapped(batchBuffer, item.group);
-      if (wasEmpty) armBatchTimer();
-      return;
-    }
-    appendCapped(awayBuffer, item.group);
+    const buffer = bufferFor(item.delivery);
+    const wasEmpty = buffer.length === 0;
+    appendCapped(buffer, item.group);
+    if (item.delivery === "batched" && wasEmpty) armBatchTimer();
   }
 
   function buildCatchup(): InboxFiring {
@@ -212,6 +217,25 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
     const groups = groupsInArrivalOrder();
     clearBuffers();
     return groups;
+  }
+
+  // Restored groups go ahead of buffered ones; a group already buffered keeps the buffered copy.
+  function restore(env: BusEnvelope): void {
+    const groups = signalsOf(env);
+    if (!groups?.length || !deps.isEnabled()) return;
+    const batchWasEmpty = batchBuffer.length === 0;
+    frontSequence -= groups.length;
+    let sequence = frontSequence;
+    for (const group of groups) {
+      const buffer = bufferFor(group.envelope.delivery);
+      const restoredSequence = sequence++;
+      if (buffer.some((entry) => entry.group.envelope.event_id === group.envelope.event_id))
+        continue;
+      buffer.push({ sequence: restoredSequence, group });
+      buffer.sort((left, right) => left.sequence - right.sequence);
+      if (buffer.length > BUFFER_CAP) buffer.shift();
+    }
+    if (batchWasEmpty) armBatchTimer();
   }
 
   const urgentCore = createBufferedInboxSource<RoutedGroup, RoutedGroup>({
@@ -271,5 +295,5 @@ export function createSignalsSource(deps: SignalsSourceDeps): SignalsSource {
     clearBatchTimer();
   }
 
-  return { start, stop, drain };
+  return { start, stop, drain, restore };
 }
