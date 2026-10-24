@@ -24,9 +24,25 @@ export function selectRowHtml(id: string, labelKey: string, controlHtml: string)
 
 // Endpoint field row template. Label/placeholder/value left empty, filled by the tab's reflect.
 // Use type="text" and control validation message directly (avoid browser default URL validation).
-export function endpointRowHtml(key: keyof EndpointOverrides): string {
+// `suggestions` renders a datalist: the input offers those values and still takes free text.
+// `subKey` replaces the generic "leave empty" hint when empty means something specific.
+export function endpointRowHtml(
+  key: keyof EndpointOverrides,
+  {
+    suggestions = [],
+    subKey = "endpoints.field_sub",
+  }: { suggestions?: readonly { value: string; labelKey: string }[]; subKey?: string } = {},
+): string {
   const def = ENDPOINT_FIELDS.find((f) => f.key === key)!;
   const errId = `yui-ep-err-${key}`;
+  const listId = `yui-ep-list-${key}`;
+  const [listAttr, listHtml] =
+    suggestions.length > 0
+      ? [
+          ` list="${listId}"`,
+          `<datalist id="${listId}">${suggestions.map((s) => `<option value="${s.value}">${t(s.labelKey)}</option>`).join("")}</datalist>`,
+        ]
+      : ["", ""];
   const urlClass = def.url ? " yui-ep-input--url" : "";
   const errHtml = def.url
     ? `<p class="yui-input-row__error" id="${errId}" role="status">${t("endpoints.url_error")}</p>`
@@ -35,11 +51,12 @@ export function endpointRowHtml(key: keyof EndpointOverrides): string {
           <div class="yui-row yui-input-row" data-ep-field="${key}">
             <div class="yui-row__main">
               <label class="yui-input-row__label" for="yui-ep-${key}">${t(def.labelKey)}</label>
-              <span class="yui-input-row__sub">${t("endpoints.field_sub")}</span>
+              <span class="yui-input-row__sub">${t(subKey)}</span>
             </div>
             <div class="yui-input-wrap">
               <input class="yui-ep-input${urlClass}" id="yui-ep-${key}" type="text" spellcheck="false"
-                inputmode="${def.url ? "url" : "text"}" autocapitalize="off" autocomplete="off" />
+                inputmode="${def.url ? "url" : "text"}" autocapitalize="off" autocomplete="off"${listAttr} />
+              ${listHtml}
             </div>
             ${errHtml}
           </div>`;

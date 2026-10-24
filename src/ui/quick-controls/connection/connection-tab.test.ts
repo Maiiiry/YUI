@@ -83,7 +83,7 @@ describe("createConnectionTab", () => {
 
   // ── Phone rows (push chat, no protocol/provider/model/broker rows) ────────────────────────
 
-  it("with the phone rows, renders and binds only push URL/key/status, STT URL/model/key, TTS provider/URL/key", () => {
+  it("with the phone rows, renders and binds only push URL/key/status, STT URL/model/language/key, TTS provider/URL/key", () => {
     // Constructing alone must not throw, even though fields like chat_model have no node here.
     const tab = build(PHONE_ROWS);
 
@@ -230,6 +230,20 @@ describe("createConnectionTab", () => {
     tab.el.querySelector<HTMLButtonElement>('[data-svc-reset="stt"]')!.click();
     expect(endpointsSettings.get().stt_model).toBe("");
     expect(model.value).toBe("");
+
+    tab.dispose();
+  });
+
+  it("offers Auto / en / ja for the STT language field and says an empty field auto-detects", () => {
+    const tab = build(PHONE_ROWS);
+
+    const lang = tab.el.querySelector<HTMLInputElement>("#yui-ep-stt_language")!;
+    const options = [
+      ...tab.el.querySelectorAll<HTMLOptionElement>(`#${lang.getAttribute("list")} option`),
+    ];
+    expect(options.map((o) => o.value)).toEqual(["auto", "en", "ja"]);
+    const sub = tab.el.querySelector('[data-ep-field="stt_language"] .yui-input-row__sub');
+    expect(sub?.textContent).toBe(t("endpoints.stt_language.sub"));
 
     tab.dispose();
   });

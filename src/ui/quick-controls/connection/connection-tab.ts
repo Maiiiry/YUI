@@ -15,7 +15,7 @@ import type {
   EndpointOverrides,
 } from "../../../settings/backend/endpoints-settings";
 import { t } from "../../i18n";
-import { ENDPOINT_FIELDS, TTS_PROVIDER_PRESETS } from "../constants";
+import { ENDPOINT_FIELDS, STT_LANGUAGE_SUGGESTIONS, TTS_PROVIDER_PRESETS } from "../constants";
 import {
   endpointRowHtml,
   keyRowHtml,
@@ -79,6 +79,7 @@ function sttSectionHtml(rows: ConnectionRows): string {
             ${typeRow}
             ${endpointRowHtml("stt_base_url")}
             ${endpointRowHtml("stt_model")}
+            ${endpointRowHtml("stt_language", { suggestions: STT_LANGUAGE_SUGGESTIONS, subKey: "endpoints.stt_language.sub" })}
             ${keyRowHtml("sttkey")}
             ${svcResetRowHtml("stt")}
           </div>
