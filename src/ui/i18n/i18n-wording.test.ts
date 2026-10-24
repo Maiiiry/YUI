@@ -11,6 +11,13 @@ const BUNDLES: readonly (readonly [string, Record<string, string>])[] = [
 ];
 
 describe("i18n wording", () => {
+  // The bundles are Record<string, string>, so a key missing from ko or ja passes typecheck.
+  for (const [name, bundle] of BUNDLES.slice(1)) {
+    it(`${name}: holds exactly en's keys`, () => {
+      expect(Object.keys(bundle).sort()).toEqual(Object.keys(en).sort());
+    });
+  }
+
   for (const [name, bundle] of BUNDLES) {
     it(`${name}: no string value contains an em-dash`, () => {
       const offenders = Object.entries(bundle).filter(([, value]) => value.includes("\u2014"));
