@@ -403,8 +403,20 @@ pub(super) fn platform_frontmost() -> (Option<String>, Option<String>) {
 mod tests {
     use super::*;
 
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        /// The current window-server session, or null when the process has none (a sandbox).
+        fn CGSessionCopyCurrentDictionary() -> CFDictionaryRef;
+    }
+
     #[test]
     fn os_idle_ms_returns_plausible_value() {
+        // Without a window-server session (a sandbox) CGEventSource blocks instead of answering.
+        let session = unsafe { CGSessionCopyCurrentDictionary() };
+        if session.is_null() {
+            return;
+        }
+        unsafe { CFRelease(session) };
         let ms = os_idle_ms();
         // Must not panic and must be within 24 h.
         assert!(ms < 86_400_000);
