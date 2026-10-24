@@ -661,6 +661,16 @@ const en: Record<string, string> = {
   "deleg.unknown": "Outcome unverified",
   "deleg.unknown_ago": "Outcome unverified · {time} ago",
   "deleg.took": "Took {time}",
+  "sigchip.dismiss": "Dismiss",
+  "sigchip.close": "Close",
+  "sigchip.more": "+{n}",
+  "sigchip.more_aria": "Show {n} more signals",
+  "sigchip.collapse": "Collapse",
+  "sigchip.kind": "Kind",
+  "sigchip.label": "Label",
+  "sigchip.received": "Received",
+  "sigchip.details_aria": "Signal details",
+  "sigchip.chip_aria": "{delivery} from {source}: {text}",
 
   // reasoning
   "think.chip": "Reasoning",

@@ -657,6 +657,16 @@ const ko: Record<string, string> = {
   "deleg.unknown": "결과 확인 필요",
   "deleg.unknown_ago": "결과 확인 필요 · {time} 전",
   "deleg.took": "걸린 시간 {time}",
+  "sigchip.dismiss": "지우기",
+  "sigchip.close": "닫기",
+  "sigchip.more": "+{n}",
+  "sigchip.more_aria": "신호 {n}개 더 보기",
+  "sigchip.collapse": "접기",
+  "sigchip.kind": "종류",
+  "sigchip.label": "라벨",
+  "sigchip.received": "받은 시각",
+  "sigchip.details_aria": "신호 상세",
+  "sigchip.chip_aria": "{source}에서 온 {delivery}: {text}",
 
   // reasoning
   "think.chip": "추론",

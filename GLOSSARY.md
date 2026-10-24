@@ -98,6 +98,9 @@ A burst of events from an external producer POSTed to the `/signals` ingress, fl
 How urgent a signal group is, chosen by the producer: `urgent` (handle now), `batched` (can wait and go out together), or the deprecated `immediate` (removed in v0.6.0; use `urgent` or `batched`). The client routes by it and shows it as the dot and class of a source line, where `immediate` reads as `batched`; it never changes the wire value.
 _Avoid_: tier, urgency, priority
 
+**Signal chip**:
+The pill beside the avatar for one signal group, with a details sheet on tap and a cross to dismiss; in memory only.
+
 **Mod**:
 A standalone MCP server the brain uses (avatar, browser-cdp, desktop-control, shell-sandbox). Not part of the app runtime.
 
