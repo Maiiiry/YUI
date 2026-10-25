@@ -15,6 +15,7 @@ import { type BusEnvelope, createEventBus, type EventBus } from "./core/event-bu
 import { createGuardrails, type Guardrails } from "./core/guardrails";
 import { createDispatcher, type Dispatcher } from "./dispatcher";
 import {
+  createDefaultAddressedChain,
   type DeferredCall,
   env,
   makeDeferredBackendCaller,
@@ -22,6 +23,7 @@ import {
   NOW,
   permissiveGuardrailsConfig,
   realGuardrailsConfig,
+  userEnv,
 } from "./test-helpers";
 import { createTurnLog, type TurnLog } from "./turn/turn";
 
@@ -99,12 +101,184 @@ beforeEach(() => {
     logger,
     peekConfig: () => PEEK_CONFIG,
     tapConfig: () => TAP_CONFIG,
+    addressedChain: createDefaultAddressedChain(),
   };
   dispatcher = createDispatcher(deps);
 });
 afterEach(() => {
   dispatcher.stop();
   vi.useRealTimers();
+});
+
+describe("dispatcher — addressed chain cap", () => {
+  function addressedEnv(seqId: number): BusEnvelope {
+    return {
+      seq_id: seqId,
+      source: "addressed_source",
+      event_name: "addressed.character",
+      ts: NOW + seqId,
+      payload: { from: "perlica", name: "Perlica", line: "natsume, you took my chair" },
+    };
+  }
+
+  /** Push one addressed envelope and let its turn begin and settle. */
+  async function runAddressed(seqId: number): Promise<void> {
+    bus.push(addressedEnv(seqId));
+    await vi.advanceTimersByTimeAsync(20);
+    callDeferred.at(-1)?.resolve("ok");
+    await vi.advanceTimersByTimeAsync(20);
+  }
+
+  it("drops the third addressed turn in a row as addressed_cap, logged at info", async () => {
+    dispatcher.start();
+    await runAddressed(1);
+    await runAddressed(2);
+    await runAddressed(3);
+
+    expect(dispatcher.recentDrops()).toContainEqual(
+      expect.objectContaining({ event_name: "addressed.character", reason: "addressed_cap" }),
+    );
+    expect(logger.info).toHaveBeenCalledWith("drop", {
+      event_name: "addressed.character",
+      reason: "addressed_cap",
+      seq_id: 3,
+    });
+  });
+
+  it("a user turn in between resets the chain", async () => {
+    dispatcher.start();
+    await runAddressed(1);
+    await runAddressed(2);
+    bus.push(userEnv("hello"));
+    await vi.advanceTimersByTimeAsync(20);
+    callDeferred.at(-1)?.resolve("ok");
+    await vi.advanceTimersByTimeAsync(20);
+    await runAddressed(3);
+
+    expect(dispatcher.recentDrops()).not.toContainEqual(
+      expect.objectContaining({ reason: "addressed_cap" }),
+    );
+  });
+
+  it("a cap-dropped envelope spends no tier2 slot — the next cue still passes", async () => {
+    dispatcher.start();
+    await runAddressed(1);
+    await runAddressed(2);
+    const evaluate = vi.spyOn(guardrails, "evaluate");
+    await runAddressed(3);
+    expect(evaluate).not.toHaveBeenCalled();
+
+    bus.push({
+      seq_id: 9,
+      source: "os_event_watcher",
+      event_name: "proactive.touch_chest",
+      ts: NOW + 9,
+      payload: { cue_id: "touch_chest", label: "chest poked" },
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(backendCaller.call as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(3);
+  });
+
+  it("an addressed envelope superseded before it began does not count", async () => {
+    dispatcher.start();
+    bus.push({
+      seq_id: 1,
+      source: "os_event_watcher",
+      event_name: "proactive.touch_chest",
+      ts: NOW + 1,
+      payload: { cue_id: "touch_chest", label: "chest poked" },
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    // In flight — the addressed envelope defers into pending, un-begun.
+    bus.push(addressedEnv(2));
+    await vi.advanceTimersByTimeAsync(20);
+    bus.push(userEnv("hello"));
+    await vi.advanceTimersByTimeAsync(20);
+    callDeferred.at(-1)?.resolve("ok");
+    await vi.advanceTimersByTimeAsync(20);
+    expect(dispatcher.recentDrops()).toContainEqual(
+      expect.objectContaining({ reason: "superseded_by_user" }),
+    );
+
+    await runAddressed(3);
+    await runAddressed(4);
+    expect(dispatcher.recentDrops()).not.toContainEqual(
+      expect.objectContaining({ reason: "addressed_cap" }),
+    );
+  });
+
+  it("onTurnClosed fires once per turn at the over edge, and with the displaced turn's values when the next begins", async () => {
+    const onTurnClosed = vi.fn();
+    const d = createDispatcher({
+      bus,
+      renderer: renderer as never,
+      backendCaller,
+      guardrails,
+      turnLog,
+      hasOutstandingSpeech: () => false,
+      logger,
+      peekConfig: () => PEEK_CONFIG,
+      tapConfig: () => TAP_CONFIG,
+      addressedChain: createDefaultAddressedChain(),
+      onTurnClosed,
+    });
+    d.start();
+    bus.push(addressedEnv(1));
+    await vi.advanceTimersByTimeAsync(20);
+    const id = turnLog.current()!.id;
+    turnLog.setSpokeText(id, true);
+    callDeferred.at(-1)?.resolve("ok");
+    await vi.advanceTimersByTimeAsync(20);
+    expect(onTurnClosed).toHaveBeenCalledTimes(1);
+    expect(onTurnClosed).toHaveBeenCalledWith({ id, outcome: "ok", spokeText: true });
+
+    // Displacement: the user speaks while the turn is still open — the next begin closes it.
+    onTurnClosed.mockClear();
+    bus.push(addressedEnv(2));
+    await vi.advanceTimersByTimeAsync(20);
+    const id2 = turnLog.current()!.id;
+    turnLog.setSpokeText(id2, true);
+    bus.push(userEnv("hello"));
+    await vi.advanceTimersByTimeAsync(20);
+    expect(onTurnClosed).toHaveBeenCalledTimes(1);
+    expect(onTurnClosed).toHaveBeenCalledWith({
+      id: id2,
+      outcome: "superseded_by_user",
+      spokeText: true,
+    });
+    d.stop();
+  });
+
+  it("a throwing onTurnClosed is warned once per turn and leaves the next turn runnable", async () => {
+    const onTurnClosed = vi.fn(() => {
+      throw new Error("hook down");
+    });
+    const d = createDispatcher({
+      bus,
+      renderer: renderer as never,
+      backendCaller,
+      guardrails,
+      turnLog,
+      hasOutstandingSpeech: () => false,
+      logger,
+      peekConfig: () => PEEK_CONFIG,
+      tapConfig: () => TAP_CONFIG,
+      addressedChain: createDefaultAddressedChain(),
+      onTurnClosed,
+    });
+    d.start();
+    await runAddressed(1);
+    expect(onTurnClosed).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith("turn_hook_failed", {
+      error: "Error: hook down",
+    });
+
+    await runAddressed(2);
+    expect(backendCaller.call as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(2);
+    expect(onTurnClosed).toHaveBeenCalledTimes(2);
+    d.stop();
+  });
 });
 
 describe("dispatcher — guardrail gating (§6)", () => {
@@ -120,6 +294,7 @@ describe("dispatcher — guardrail gating (§6)", () => {
       guardrails: g,
       turnLog,
       hasOutstandingSpeech: () => false,
+      addressedChain: createDefaultAddressedChain(),
       logger,
     });
     return { d, g };
@@ -139,6 +314,7 @@ describe("dispatcher — guardrail gating (§6)", () => {
       guardrails: g,
       turnLog,
       hasOutstandingSpeech: () => false,
+      addressedChain: createDefaultAddressedChain(),
       logger,
     });
     d.start();
@@ -246,6 +422,7 @@ describe("dispatcher — global proactive pacer gate", () => {
       onTurnDropped: over.onTurnDropped,
       turnLog,
       hasOutstandingSpeech: () => false,
+      addressedChain: createDefaultAddressedChain(),
       logger,
       peekConfig: () => PEEK_CONFIG,
       tapConfig: () => TAP_CONFIG,
@@ -442,6 +619,7 @@ describe("dispatcher — urgent signals guardrails (urgent_max)", () => {
       guardrails: g,
       turnLog,
       hasOutstandingSpeech: () => false,
+      addressedChain: createDefaultAddressedChain(),
       logger,
     });
     return { d, g };

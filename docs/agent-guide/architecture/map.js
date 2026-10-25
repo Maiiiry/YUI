@@ -696,7 +696,7 @@ globalThis.YUI_MAP =
       "id": "io/chat/tools",
       "module": "tools",
       "label": "client tools",
-      "role": "The tools the client declares to the backend and runs itself: generate_express, rate_relation, body_action, look, browser.",
+      "role": "The tools the client declares to the backend and runs itself: generate_express, rate_relation, address_character, body_action, look, browser.",
       "paths": [
         "src/io/chat/tools"
       ]
@@ -867,7 +867,7 @@ globalThis.YUI_MAP =
       "id": "io/bridge/settings",
       "module": "bridge",
       "label": "settings bridge",
-      "role": "Typed cross-window settings bus: its channels scoped to the sender's preset, and the unscoped settings-changed, preset-changed and pet-windows-changed.",
+      "role": "Typed cross-window settings bus: its channels scoped to the sender's preset, and the unscoped settings-changed, preset-changed, pet-windows-changed and character-addressed.",
       "paths": [
         "src/io/bridge/settings-bridge.ts"
       ]
@@ -1059,6 +1059,15 @@ globalThis.YUI_MAP =
       "role": "Fires the wake candidate as she gets out of bed.",
       "paths": [
         "src/dispatcher/sources/wake"
+      ]
+    },
+    {
+      "id": "dispatcher/sources/addressed",
+      "module": "sources",
+      "label": "addressed source",
+      "role": "Turns a character-addressed bridge event for this preset into the addressed.character candidate, and emits that event for this window's reply once it is over.",
+      "paths": [
+        "src/dispatcher/sources/addressed"
       ]
     },
     {
@@ -2739,7 +2748,7 @@ globalThis.YUI_MAP =
       "id": "settings-guardrails",
       "from": "settings",
       "to": "dispatcher/core",
-      "carries": "guardrail caps → guardrails.setConfig(getGuardrails())",
+      "carries": "guardrail caps, addressed_chain_max included → guardrails.setConfig(getGuardrails())",
       "kind": "callback",
       "transport": "shared",
       "wiring": "src/app/cross-window/wire-window-sync.ts"
@@ -3222,6 +3231,51 @@ globalThis.YUI_MAP =
       "carries": "the character on screen: expression, mouth, motion",
       "kind": "user",
       "transport": "shared"
+    },
+    {
+      "id": "address-character",
+      "from": "io/chat/tools",
+      "to": "dispatcher/sources/addressed",
+      "carries": "address_character → record(turnId, to); refused for an unknown or closed target and for a second call in one turn",
+      "kind": "call",
+      "transport": "shared",
+      "wiring": "src/app/bootstrap-configured.ts"
+    },
+    {
+      "id": "turn-closed-addressed",
+      "from": "dispatcher/core",
+      "to": "dispatcher/sources/addressed",
+      "carries": "onTurnClosed {id, trigger, outcome, spokeText} once per turn, at the over edge or when the next turn displaces it",
+      "kind": "callback",
+      "transport": "shared",
+      "wiring": "src/app/turn/wire-dispatcher.ts"
+    },
+    {
+      "id": "character-addressed-emit",
+      "from": "dispatcher/sources/addressed",
+      "to": "io/bridge/settings",
+      "carries": "yui://character-addressed {from, name, to, text, ts}, unscoped, after the reply's turn ended with speech and its playback finished",
+      "kind": "bridge",
+      "transport": "shared",
+      "wiring": "src/windows/main.ts"
+    },
+    {
+      "id": "character-addressed-receive",
+      "from": "io/bridge/settings",
+      "to": "dispatcher/sources/addressed",
+      "carries": "yui://character-addressed {from, name, to, text, ts}, unscoped, filtered on `to`",
+      "kind": "bridge",
+      "transport": "shared",
+      "wiring": "src/app/turn/wire-sources.ts"
+    },
+    {
+      "id": "addressed-bus",
+      "from": "dispatcher/sources/addressed",
+      "to": "dispatcher/core",
+      "carries": "bus.push: addressed.character {from, name, line}; the chain cap addressed_chain_max drops the third in a row without a user turn",
+      "kind": "call",
+      "transport": "shared",
+      "wiring": "src/app/turn/wire-sources.ts"
     }
   ],
   "flows": [
@@ -4613,6 +4667,20 @@ globalThis.YUI_MAP =
         "to": "pet-<id>",
         "carries": "/presets/<id>/signals, /presets/<id>/agent-event and /presets/<id>/avatar/* → agent-inbox, signals-inbox, avatar-rpc, to the window bound to <id> and no other",
         "kind": "tauri-event"
+      },
+      {
+        "id": "character-addressed-pet-bound",
+        "from": "pet",
+        "to": "pet-<id>",
+        "carries": "yui://character-addressed {from, name, to, text, ts}; unscoped: every pet window receives it and keeps the one naming its preset",
+        "kind": "bridge"
+      },
+      {
+        "id": "character-addressed-bound-pet",
+        "from": "pet-<id>",
+        "to": "pet",
+        "carries": "yui://character-addressed {from, name, to, text, ts}; unscoped: every pet window receives it and keeps the one naming its preset",
+        "kind": "bridge"
       }
     ]
   }

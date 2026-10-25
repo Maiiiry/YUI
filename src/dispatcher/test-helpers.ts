@@ -15,6 +15,7 @@ import type {
 } from "../io/chat/stream/chat-client";
 import type { Logger } from "../logger";
 import type { BackendCaller, TurnOutcome } from "./backend/backend-caller";
+import { type AddressedChain, createAddressedChain } from "./core/addressed-chain";
 import type { BusEnvelope } from "./core/event-bus";
 import type { GuardrailsConfig } from "./core/guardrails";
 import type { Turn } from "./turn/turn";
@@ -100,6 +101,11 @@ export const CONFIG: EndpointsConfig = {
   tts_base_url: "http://localhost:8092",
 };
 
+/** The default chain the dispatcher tests run with: two addressed turns in a row, the shipped cap. */
+export function createDefaultAddressedChain(): AddressedChain {
+  return createAddressedChain(() => 2);
+}
+
 /** Valid /signals ingress envelope for fixture groups. */
 export const SIGNAL_ENVELOPE: SignalEnvelope = {
   source: "n8n",
@@ -131,6 +137,7 @@ export function permissiveGuardrailsConfig(): GuardrailsConfig {
       urgent_max: 1000,
       overall_max: 1000,
       cooldown_ms: 300_000,
+      addressed_chain_max: 2,
     },
     attachments: guardrailsFixture().attachments,
   };
@@ -150,6 +157,7 @@ export function realGuardrailsConfig(): GuardrailsConfig {
       urgent_max: 120,
       overall_max: 20,
       cooldown_ms: 300_000,
+      addressed_chain_max: 2,
     },
     attachments: guardrailsFixture().attachments,
   };

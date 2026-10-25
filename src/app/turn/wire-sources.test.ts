@@ -47,6 +47,10 @@ vi.mock("../../dispatcher/sources/idle-tick/milestone-source", () => ({
   createMilestoneSource: vi.fn(makeSource("milestone")),
 }));
 
+vi.mock("../../dispatcher/sources/addressed/addressed-source", () => ({
+  createAddressedSource: vi.fn(makeSource("addressed")),
+}));
+
 import { createScreenKnobSettings, mergeScreen } from "../../settings/capture/screen-settings";
 import { wireDispatcherSources } from "./wire-sources";
 
@@ -101,9 +105,12 @@ describe("wireDispatcherSources", () => {
       pipelineBusy,
       pacer: fakePacer(),
       isFirstActivityHeld: () => false,
+      onCharacterAddressed: () => () => {},
+      selfPresetId: "natsume",
     });
 
     expect(Object.keys(result).sort()).toEqual([
+      "addressedSource",
       "agentSource",
       "milestoneSource",
       "proactiveSource",
@@ -114,6 +121,7 @@ describe("wireDispatcherSources", () => {
     ]);
     // Each source is started (fire-and-forget) so candidate events flow once wired.
     expect(started.sort()).toEqual([
+      "addressed",
       "agent",
       "milestone",
       "proactive",
@@ -151,6 +159,8 @@ describe("wireDispatcherSources", () => {
       pipelineBusy: { isBusy: () => false, subscribe: vi.fn(() => vi.fn()) },
       pacer: fakePacer(),
       isFirstActivityHeld: () => false,
+      onCharacterAddressed: () => () => {},
+      selfPresetId: "natsume",
     });
 
     const milestone = created.milestone as {
@@ -178,6 +188,8 @@ describe("wireDispatcherSources", () => {
       pipelineBusy: { isBusy: () => false, subscribe: vi.fn(() => vi.fn()) },
       pacer: fakePacer(),
       isFirstActivityHeld: () => held,
+      onCharacterAddressed: () => () => {},
+      selfPresetId: "natsume",
     });
 
     const milestone = created.milestone as { isEnabled: () => boolean; isHeld: () => boolean };
@@ -205,6 +217,8 @@ describe("wireDispatcherSources", () => {
       pipelineBusy: { isBusy: () => false, subscribe: vi.fn(() => vi.fn()) },
       pacer: fakePacer(),
       isFirstActivityHeld: () => false,
+      onCharacterAddressed: () => () => {},
+      selfPresetId: "natsume",
     });
 
     const group = { items: [{ skill: "yui-daily-briefing" }] };
@@ -230,6 +244,8 @@ describe("wireDispatcherSources", () => {
       pipelineBusy: { isBusy: () => false, subscribe: vi.fn(() => vi.fn()) },
       pacer: fakePacer(),
       isFirstActivityHeld: () => false,
+      onCharacterAddressed: () => () => {},
+      selfPresetId: "natsume",
     });
 
     const screen = created.screen as {
@@ -263,6 +279,8 @@ describe("wireDispatcherSources", () => {
       pipelineBusy: { isBusy: () => false, subscribe: vi.fn(() => vi.fn()) },
       pacer: fakePacer(),
       isFirstActivityHeld: () => false,
+      onCharacterAddressed: () => () => {},
+      selfPresetId: "natsume",
     });
 
     const screen = created.screen as { getConfig: () => typeof screenConfig };
@@ -286,6 +304,8 @@ describe("wireDispatcherSources", () => {
       pipelineBusy: { isBusy: () => false, subscribe: vi.fn(() => vi.fn()) },
       pacer,
       isFirstActivityHeld: () => false,
+      onCharacterAddressed: () => () => {},
+      selfPresetId: "natsume",
     });
   }
 

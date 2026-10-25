@@ -27,6 +27,9 @@ export function classify(env: BusEnvelope): Classification {
   if (n.startsWith("agent.")) {
     return { tier: 2, target: "backend_caller" };
   }
+  if (n.startsWith("addressed.")) {
+    return { tier: 2, target: "backend_caller" };
+  }
   if (n.startsWith("signals.")) {
     return { tier: 2, target: "backend_caller" };
   }
@@ -57,6 +60,11 @@ export function classify(env: BusEnvelope): Classification {
   return { target: "drop" };
 }
 
+export const ADDRESSED_EVENT = "addressed.character";
+
+export const isAddressedEvent = (env: Pick<BusEnvelope, "event_name">): boolean =>
+  env.event_name.startsWith("addressed.");
+
 /** Source of a user-initiated turn (typed vs voice) — filters onUserTurnFailed targets and hints routing.
  * Other triggers such as proactive/schedule/agent are undefined (§274, not a UI error-surface target). */
 export type UserTurnSource = "text" | "voice";
@@ -80,4 +88,5 @@ export const PACED_SOURCES: Record<BusEnvelope["source"], boolean> = {
   os_event_watcher: false,
   user_input_source: false,
   urgent_signal_source: false,
+  addressed_source: false,
 };

@@ -11,10 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PeekConfig, TapConfig } from "../config/validators/avatar/types";
 import type { Logger } from "../logger";
 import type { BackendCaller } from "./backend/backend-caller";
+import { classify, PACED_SOURCES } from "./core/classify";
 import { createEventBus, type EventBus } from "./core/event-bus";
 import { createGuardrails, type Guardrails } from "./core/guardrails";
 import { createDispatcher, type Dispatcher } from "./dispatcher";
 import {
+  createDefaultAddressedChain,
   type DeferredCall,
   env,
   makeDeferredBackendCaller,
@@ -101,6 +103,7 @@ beforeEach(() => {
     guardrails,
     turnLog,
     hasOutstandingSpeech: () => speaking,
+    addressedChain: createDefaultAddressedChain(),
     peek: { enter: peekEnter, exit: peekExit },
     logger,
     peekConfig: () => PEEK_CONFIG,
@@ -114,6 +117,16 @@ afterEach(() => {
 });
 
 describe("dispatcher — routing (§5.1)", () => {
+  it("classifies addressed.character as tier2 → backend_caller", () => {
+    expect(
+      classify(env({ source: "addressed_source", event_name: "addressed.character" })),
+    ).toEqual({ tier: 2, target: "backend_caller" });
+  });
+
+  it("leaves the addressed source unpaced — a held pacer never delays an addressed turn", () => {
+    expect(PACED_SOURCES.addressed_source).toBe(false);
+  });
+
   it("routes user.text_submitted (tier2) to the backend caller", async () => {
     dispatcher.start();
     bus.push(env());
@@ -350,6 +363,7 @@ describe("dispatcher — routing (§5.1)", () => {
       guardrails,
       turnLog,
       hasOutstandingSpeech: () => speaking,
+      addressedChain: createDefaultAddressedChain(),
       logger,
       peekConfig: () => livePeekConfig,
       tapConfig: () => TAP_CONFIG,
@@ -447,6 +461,7 @@ describe("dispatcher — routing (§5.1)", () => {
       guardrails,
       turnLog,
       hasOutstandingSpeech: () => speaking,
+      addressedChain: createDefaultAddressedChain(),
       logger,
     });
     dispatcher.start();

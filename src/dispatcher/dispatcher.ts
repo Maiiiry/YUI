@@ -10,7 +10,7 @@
  *     · tier1 (drag/window/tap/pat reactions, avatar.* gait cues, user.fall_land) → local
  *       handling (no backend).
  *     · tier2 (user.text_submitted · user.voice_segment_ready · time_milestone.* ·
- *       proactive.* · schedule.* · agent.* · signals.*) → backend_caller.
+ *       proactive.* · schedule.* · agent.* · signals.* · addressed.*) → backend_caller.
  *
  * Single in-flight backend call. Deferred tier2 keeps only one item in local pending
  * (with two or more deferred, the oldest is dropped). With the turn gate on, a call first waits
@@ -41,7 +41,14 @@ import type {
   TurnFailure,
   TurnOutcome,
 } from "./backend/backend-caller";
-import { classify, PACED_SOURCES, type UserTurnSource, userTurnSourceOf } from "./core/classify";
+import type { AddressedChain } from "./core/addressed-chain";
+import {
+  classify,
+  isAddressedEvent,
+  PACED_SOURCES,
+  type UserTurnSource,
+  userTurnSourceOf,
+} from "./core/classify";
 import type { BusEnvelope, EventBus } from "./core/event-bus";
 import type { Guardrails } from "./core/guardrails";
 import type { ProactivePacer } from "./core/proactive-pacer";
@@ -105,6 +112,10 @@ interface DispatcherDeps {
   onTurnAdmitted?: (turn: Turn) => void;
   /** Every drop the dispatcher records, with its reason: a trigger held back or superseded before its backend call, or a backend call that failed. */
   onTurnDropped?: (env: BusEnvelope, reason: DropRecord["reason"]) => void;
+  /** The chain cap on addressed turns: an over-cap fire drops at the routing gate, a begun one counts. */
+  addressedChain: AddressedChain;
+  /** A turn is over — the over edge, or the next begin displacing it — with the facts the `turn` log line holds. */
+  onTurnClosed?: (turn: { id: number; outcome: TurnOutcome; spokeText: boolean }) => void;
   /** Structured logging (defaults to the dispatcher namespace logger). */
   logger?: Logger;
 }
@@ -115,7 +126,13 @@ type DispatcherState = "booting" | "running" | "cooldown" | "degraded" | "stoppe
 interface DropRecord {
   seq_id?: number;
   event_name: string;
-  reason: TurnFailure | "guardrail_drop" | "stale_pending" | "degraded_drop" | "global_gap";
+  reason:
+    | TurnFailure
+    | "guardrail_drop"
+    | "stale_pending"
+    | "degraded_drop"
+    | "global_gap"
+    | "addressed_cap";
   ts: number;
 }
 
@@ -131,6 +148,7 @@ export const DROP_SEVERITY: Record<DropRecord["reason"], LogLevel> = {
   stale_pending: "info",
   degraded_drop: "warn",
   global_gap: "info",
+  addressed_cap: "info",
 };
 
 /** in_flight_backend_call. */
@@ -217,17 +235,25 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
    */
   function closeTurn(): void {
     if (!openTurn) return;
+    const outcome = openTurn.outcome ?? "superseded_by_user";
+    const spokeText = deps.turnLog.didSpeakText();
     log.info("turn", {
       id: openTurn.id,
       trigger: openTurn.trigger,
       // A turn still open when the next one begins was displaced; the only way its call had not
       // yet resolved is an abort.
-      outcome: openTurn.outcome ?? "superseded_by_user",
+      outcome,
       duration_ms: Date.now() - openTurn.started_at,
       spoke: deps.turnLog.didOweAudio(),
-      spoke_text: deps.turnLog.didSpeakText(),
+      spoke_text: spokeText,
     });
+    const closed = { id: openTurn.id, outcome, spokeText };
     openTurn = null;
+    try {
+      deps.onTurnClosed?.(closed);
+    } catch (err) {
+      log.warn("turn_hook_failed", { error: String(err) });
+    }
   }
 
   // Close the turn line at the over⟷live boundary — covers a turn that settles and finishes
@@ -330,6 +356,7 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     log.debug("backend_call", { trigger: env.event_name, seq_id: env.seq_id, started_at });
     closeTurn();
     const turn = deps.turnLog.begin(env);
+    if (isAddressedEvent(env)) deps.addressedChain.count();
     openTurn = { id: turn.id, trigger: env.event_name, started_at, outcome: null };
     deps.onTurnAdmitted?.(turn);
     // Server-side HTTP error detail, kept per call so a superseded turn's late detail
@@ -450,6 +477,7 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
     // For a user-initiated turn (typed or voice), apply supersede before classification.
     if (userTurnSourceOf(env) !== undefined) {
       supersedeByUser();
+      deps.addressedChain.reset();
     }
 
     const classified = classify(env);
@@ -466,7 +494,12 @@ export function createDispatcher(deps: DispatcherDeps): Dispatcher {
         return;
       }
       // Ahead of the guardrail: evaluate() spends a rate-limit slot at fire time and never
-      // refunds it, so a held fire must not reach it.
+      // refunds it, so a held fire must not reach it. The chain cap drops before it for the
+      // same reason.
+      if (isAddressedEvent(env) && !deps.addressedChain.canAdmit()) {
+        recordDrop(env, "addressed_cap");
+        return;
+      }
       if (heldByPacer(env)) {
         dropForPacer(env);
         return;
