@@ -185,6 +185,8 @@ const ja: Record<string, string> = {
   "preset.use_in_main": "mainに表示",
   "preset.window_open": "ウィンドウあり",
   "preset.rename": "{name}の名前を変更",
+  "preset.photo": "{name}の写真を選ぶ",
+  "preset.photo_failed": "この写真は使えません。PNGかJPEGを選んでください。",
   "preset.remove": "{name}を削除",
   "preset.name_aria": "プリセット名",
   "preset.hint_save": "保存",
@@ -260,6 +262,19 @@ const ja: Record<string, string> = {
   "card.export_error": "ファイルを書き出せませんでした",
   "card.user_name": "あなたの名前",
   "card.user_name_sub": "すべてのプリセットで共通です",
+
+  // unified chat window
+  "unified.enable_label": "統合チャット",
+  "unified.enable_sub":
+    "キャラクターが2人以上開いているとき、ひとつのウィンドウでまとめて話せます。@で相手を選び、なければ最後に話したキャラクターが答えます",
+  "unified.title": "統合チャット",
+  "unified.to": "{name}に",
+  "unified.marker": "→ {name}",
+  "unified.everyone_sub": "開いているキャラクター全員に",
+  "unified.hint": "@で答えるキャラクターを選べます",
+  "unified.remove_mention": "宛先を外す",
+  "unified.just_now": "たった今",
+  "unified.pending": "送信中",
 
   // filler (thinking interjections)
   "filler.section": "考え中のあいづち",

@@ -90,6 +90,27 @@ and the pump goes on.
 | `addressed-source` | `fire` | `from` | The addressed source pushed an `addressed.character` candidate for this preset. |
 | `addressed-source` | `push_rejected` | `from` | The bus refused the addressed candidate. |
 
+## Routed user turns
+
+`dispatcher/sources/routed/routed-user-source.ts` (namespace `routed-user-source`) logs at `info`. The done signal logs nothing.
+
+| Namespace | Event | Fields | When |
+|---|---|---|---|
+| `routed-user-source` | `fire` | `mention` | The routed source submitted a user turn for a message the unified chat window sent to this preset. `mention` is `character`, `everyone` or `none`. |
+
+## Unified chat window
+
+`ui/unified/unified-view.ts` (namespace `unified-view`), `ui/unified/sequence.ts` (namespace `sequence`), `io/window/openers/unified-window.ts` (namespace `unified-window`), and the Talk tab's switch row (namespace `quick-ui` in the pet window, `settings-ui` in the settings window) log at `info` unless a row says otherwise.
+
+| Namespace | Event | Fields | When |
+|---|---|---|---|
+| `unified-view` | `route` | `targets`, `mention` | The window sent a message. `targets` is how many presets it goes to, `mention` is `character`, `everyone` or `none`. |
+| `sequence` | `sequence_timeout` | `preset` | A preset gave no done signal for the current send in 60 seconds, so the sequence moved on. |
+| `unified-window` | `unified_window_create_error` | `error` | The window could not be created (`error` level). |
+| `unified-window` | `unified_window_open_failed` | `error` | Showing or creating the window threw (`warn` level). |
+| `unified-window` | `unified_window_close_failed` | `error` | Closing the window threw (`warn` level). |
+| `quick-ui`, `settings-ui` | `unified_chat_toggle` | `enabled` | The user flipped the Unified chat switch. |
+
 ## TypeScript Usage
 
 ```ts

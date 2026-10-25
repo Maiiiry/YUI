@@ -183,6 +183,8 @@ const ko: Record<string, string> = {
   "preset.use_in_main": "main에 띄우기",
   "preset.window_open": "창 열림",
   "preset.rename": "{name} 이름 바꾸기",
+  "preset.photo": "{name}의 사진 고르기",
+  "preset.photo_failed": "이 사진을 쓸 수 없어요. PNG 또는 JPEG를 골라 주세요.",
   "preset.remove": "{name} 삭제",
   "preset.name_aria": "프리셋 이름",
   "preset.hint_save": "저장",
@@ -258,6 +260,19 @@ const ko: Record<string, string> = {
   "card.export_error": "파일을 쓰지 못했어요",
   "card.user_name": "내 이름",
   "card.user_name_sub": "모든 프리셋이 함께 써요",
+
+  // unified chat window
+  "unified.enable_label": "통합 채팅창",
+  "unified.enable_sub":
+    "열린 캐릭터가 둘 이상이면 한 창에서 함께 대화해요. @로 받는 캐릭터를 고르고, 없으면 마지막으로 말한 캐릭터가 받아요",
+  "unified.title": "통합 채팅창",
+  "unified.to": "{name}에게",
+  "unified.marker": "→ {name}",
+  "unified.everyone_sub": "열린 캐릭터 전원에게",
+  "unified.hint": "@로 받는 캐릭터를 고를 수 있어요",
+  "unified.remove_mention": "받는 캐릭터 지우기",
+  "unified.just_now": "방금",
+  "unified.pending": "보내는 중",
 
   // filler (thinking interjections)
   "filler.section": "생각중 추임새",

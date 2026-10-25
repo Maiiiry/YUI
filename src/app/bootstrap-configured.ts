@@ -7,18 +7,25 @@ import type { Guardrails } from "../dispatcher/core/guardrails";
 import type { Dispatcher } from "../dispatcher/dispatcher";
 import { createAddressedProducer } from "../dispatcher/sources/addressed/addressed-producer";
 import type { SignalsSource } from "../dispatcher/sources/inbox/signals-source";
+import { createUserTurnDone } from "../dispatcher/sources/routed/user-turn-done";
 import { onAvatarRpc, respondAvatarRpc } from "../io/bridge/inbox/avatar-rpc";
-import type { CharacterAddressed } from "../io/bridge/settings-bridge";
+import type {
+  CharacterAddressed,
+  UserTurnDone,
+  UserTurnRouted,
+} from "../io/bridge/settings-bridge";
 import type { ClientTool } from "../io/chat/tools/client-tools";
 import { createPetWindowTools } from "../io/chat/tools/pet-window-tools";
 import type { ScreenCapturer } from "../io/window/capture/screen-source-provider";
 import { createFrontmostTracker } from "../io/window/frontmost-tracker";
+import { createUnifiedWindowController } from "../io/window/openers/unified-window";
 import type { SummonHotkey } from "../io/window/pet/summon-hotkey";
 import { subscribeOsEvent } from "../io/window/tauri-listen";
 import { createLogger } from "../logger";
 import { mergeScreen } from "../settings/capture/screen-settings";
 import type { DelegationChipSettingsStore } from "../settings/panels/delegation-chip-settings";
 import { presetIdForWindow, readPresetName } from "../settings/preset/active-preset";
+import { readOpenPresetIds } from "../settings/preset/pet-windows";
 import { isMacOS, isWindows } from "../tauri-env";
 import { t } from "../ui/i18n";
 import { maybeShowFirstRunHint } from "../ui/notices/first-run-hint";
@@ -39,6 +46,7 @@ import type { VoicePipeline } from "./turn/voice/wire-voice-pipeline";
 import { wireCard } from "./turn/wire-card";
 import { wireGreeting } from "./turn/wire-greeting";
 import { wireDispatcherSources } from "./turn/wire-sources";
+import { wireUnifiedWindow } from "./unified/wire-unified-window";
 
 const log = createLogger("bootstrap");
 
@@ -56,6 +64,12 @@ interface Phase1Handles extends TurnCorePhase1 {
   emitCharacterAddressed(event: CharacterAddressed): void;
   /** Subscribes to the replies another character addressed to this preset. */
   onCharacterAddressed(cb: (event: CharacterAddressed) => void): () => void;
+  /** Subscribes to the pet windows opening and closing. */
+  onPetWindowsChanged(cb: () => void): () => void;
+  /** Emits that this preset's user turn for a send id is over, or never started. */
+  emitUserTurnDone(event: UserTurnDone): void;
+  /** Subscribes to the unified chat window's messages routed to a preset. */
+  onUserTurnRouted(cb: (event: UserTurnRouted) => void): () => void;
   isDisposed(): boolean;
   bedSceneHold: BedSceneHold;
 }
@@ -181,14 +195,21 @@ const realFactories: ConfiguredBootstrapFactories = {
     });
     let signals: Pick<SignalsSource, "restore"> | null = null;
     const restoreSignals = (env: BusEnvelope): void => signals?.restore(env);
+    const userTurnDone = createUserTurnDone({
+      presetId: presetIdForWindow,
+      emit: phase1.emitUserTurnDone,
+      onTurnClosed: addressed.onTurnClosed,
+      onTurnDropped: restoreSignals,
+    });
     const core = await wireTurnCore(cfg, phase1, {
-      restoreSignals,
+      restoreSignals: userTurnDone.onTurnDropped,
       getCardText: card.getCardText,
       getFrontmost: () => frontmostTracker.get(),
       screenCapturer: phase1.screenCapturer,
       openQuickControls: (tab) => getQuickControls().open(undefined, { tab }),
       windowTools,
-      onTurnClosed: addressed.onTurnClosed,
+      onTurnClosed: userTurnDone.onTurnClosed,
+      addressedTo: addressed.targetOf,
       voicePersistence: {
         get: () => settings.sttSettings.get().enabled,
         set: settings.sttSettings.setEnabled,
@@ -228,6 +249,7 @@ const realFactories: ConfiguredBootstrapFactories = {
       screenSource,
       wakeSource,
       addressedSource,
+      routedUserSource,
     } = wireDispatcherSources({
       bus,
       presenceSettings,
@@ -244,6 +266,8 @@ const realFactories: ConfiguredBootstrapFactories = {
       pacer,
       isFirstActivityHeld: bedScene.isHeld,
       onCharacterAddressed: phase1.onCharacterAddressed,
+      onUserTurnRouted: phase1.onUserTurnRouted,
+      submitUser: phase1.userInput.submit,
       selfPresetId: presetIdForWindow(),
       onSignalArrival: signalChips.onArrival,
     });
@@ -256,6 +280,7 @@ const realFactories: ConfiguredBootstrapFactories = {
     register(milestoneSource.stop);
     register(screenSource.stop);
     register(addressedSource.stop);
+    register(routedUserSource.stop);
     const hitTest = wireHitTest({
       root,
       renderer,
@@ -327,6 +352,17 @@ const realFactories: ConfiguredBootstrapFactories = {
       log,
     });
     register(() => void summonHotkey.dispose());
+    // Main alone owns the unified chat window; a bound pet window never opens it.
+    if (phase1.bound !== true) {
+      register(
+        wireUnifiedWindow({
+          switch: settings.unifiedChatSwitch,
+          openPresetIds: readOpenPresetIds,
+          onPetWindowsChanged: phase1.onPetWindowsChanged,
+          window: createUnifiedWindowController(),
+        }),
+      );
+    }
     register(wireIngressDeadNotice({ surfaces, t }));
     const { vocabulary, stopTurn } = await core.connect({
       onSubmit: () => {

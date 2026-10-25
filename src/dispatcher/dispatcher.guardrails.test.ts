@@ -13,7 +13,7 @@ import type { Logger } from "../logger";
 import type { BackendCaller } from "./backend/backend-caller";
 import { type BusEnvelope, createEventBus, type EventBus } from "./core/event-bus";
 import { createGuardrails, type Guardrails } from "./core/guardrails";
-import { createDispatcher, type Dispatcher } from "./dispatcher";
+import { createDispatcher, type Dispatcher, type DispatcherDeps } from "./dispatcher";
 import {
   createDefaultAddressedChain,
   type DeferredCall,
@@ -277,6 +277,72 @@ describe("dispatcher — addressed chain cap", () => {
     await runAddressed(2);
     expect(backendCaller.call as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(2);
     expect(onTurnClosed).toHaveBeenCalledTimes(2);
+    d.stop();
+  });
+});
+
+describe("dispatcher — routed user turns", () => {
+  function routedEnv(payload: Record<string, unknown>): BusEnvelope {
+    return { ...userEnv("hi"), payload: { text: "hi", ...payload } };
+  }
+
+  function make(hooks: {
+    onTurnClosed?: DispatcherDeps["onTurnClosed"];
+    onTurnDropped?: DispatcherDeps["onTurnDropped"];
+  }): Dispatcher {
+    const d = createDispatcher({
+      bus,
+      renderer: renderer as never,
+      backendCaller,
+      guardrails,
+      turnLog,
+      hasOutstandingSpeech: () => false,
+      logger,
+      peekConfig: () => PEEK_CONFIG,
+      tapConfig: () => TAP_CONFIG,
+      addressedChain: createDefaultAddressedChain(),
+      ...hooks,
+    });
+    d.start();
+    return d;
+  }
+
+  it("reports the send id of a routed user turn when it closes", async () => {
+    const onTurnClosed = vi.fn();
+    const d = make({ onTurnClosed });
+    bus.push(routedEnv({ send_id: "s1" }));
+    await vi.advanceTimersByTimeAsync(20);
+    callDeferred.at(-1)?.resolve("ok");
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(onTurnClosed).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sendId: "s1" }));
+    d.stop();
+  });
+
+  it("reports no send id for a user turn typed in the window", async () => {
+    const onTurnClosed = vi.fn();
+    const d = make({ onTurnClosed });
+    bus.push(routedEnv({}));
+    await vi.advanceTimersByTimeAsync(20);
+    callDeferred.at(-1)?.resolve("ok");
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(onTurnClosed.mock.calls[0]?.[0]).not.toHaveProperty("sendId");
+    d.stop();
+  });
+
+  it("hands the envelope of a turn that failed before speaking to onTurnDropped", async () => {
+    const onTurnDropped = vi.fn();
+    const d = make({ onTurnDropped });
+    bus.push(routedEnv({ send_id: "s1" }));
+    await vi.advanceTimersByTimeAsync(20);
+    callDeferred.at(-1)?.resolve("not_configured");
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(onTurnDropped).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: { text: "hi", send_id: "s1" } }),
+      "not_configured",
+    );
     d.stop();
   });
 });

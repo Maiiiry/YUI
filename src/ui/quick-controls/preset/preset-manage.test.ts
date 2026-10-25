@@ -90,3 +90,118 @@ it("a rejected thumbnail removal logs a warning and keeps the removal", async ()
   expect(log.info).toHaveBeenCalledWith("preset_remove", { preset: "abcd1234" });
   registry.dispose();
 });
+
+it.each([
+  "everyone",
+  "Here",
+  "ALL",
+])("a reserved name %j shows as a taken one in the new-name field", (name) => {
+  localStorage.clear();
+  const registry = createPresetRegistry({ newId: () => "abcd1234" });
+  const el = document.createElement("div");
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  const manage = createPresetManage({ el, registry, log });
+  manage.render();
+  el.querySelector<HTMLButtonElement>(".yui-add-btn")!.click();
+  const input = el.querySelector<HTMLInputElement>("#yui-preset-new-name")!;
+
+  input.value = name;
+  input.dispatchEvent(new Event("input"));
+
+  expect(el.querySelector(".yui-preset-new")?.classList.contains("is-invalid")).toBe(true);
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  registry.dispose();
+});
+
+it("a reserved name typed into a rename field shows as a taken one", () => {
+  localStorage.clear();
+  const registry = createPresetRegistry({ newId: () => "abcd1234" });
+  registry.create("companion");
+  const el = document.createElement("div");
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  const manage = createPresetManage({ el, registry, log });
+  manage.render();
+  el.querySelector<HTMLButtonElement>(
+    '[data-preset-id="abcd1234"] .yui-preset-row__rename',
+  )!.click();
+  const input = el.querySelector<HTMLInputElement>(".is-renaming input")!;
+
+  input.value = "everyone";
+  input.dispatchEvent(new Event("input"));
+
+  expect(el.querySelector(".is-renaming")?.classList.contains("is-invalid")).toBe(true);
+  registry.dispose();
+});
+
+function photoSetup(pickPhoto?: (id: string) => Promise<string | null>) {
+  localStorage.clear();
+  const registry = createPresetRegistry({ newId: () => "abcd1234" });
+  registry.create("companion");
+  const el = document.createElement("div");
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  createPresetManage({ el, registry, log, pickPhoto }).render();
+  const button = () =>
+    el.querySelector<HTMLButtonElement>('[data-preset-id="abcd1234"] .yui-preset-row__photo');
+  const thumbnail = () => registry.get().list.find((e) => e.id === "abcd1234")?.thumbnail;
+  return { registry, button, thumbnail };
+}
+
+it("offers a photo button on every row only where a picker is passed", () => {
+  const without = photoSetup();
+  expect(without.button()).toBeNull();
+  without.registry.dispose();
+
+  const withPicker = photoSetup(async () => null);
+  expect(withPicker.button()?.getAttribute("aria-label")).toBe("Choose a photo for companion");
+  withPicker.registry.dispose();
+});
+
+it("stores the picked photo as the preset's thumbnail and leaves it when the picker is dismissed", async () => {
+  const pick = vi.fn<(id: string) => Promise<string | null>>(
+    async () => "asset://x/abcd1234.png?v=1",
+  );
+  const { registry, button, thumbnail } = photoSetup(pick);
+
+  button()!.click();
+  await vi.waitFor(() => expect(thumbnail()).toBe("asset://x/abcd1234.png?v=1"));
+  expect(pick).toHaveBeenCalledWith("abcd1234");
+
+  pick.mockResolvedValueOnce(null);
+  button()!.click();
+  await Promise.resolve();
+  expect(thumbnail()).toBe("asset://x/abcd1234.png?v=1");
+  registry.dispose();
+});
+
+it("a photo the picker refuses is logged and shown as an error line until the next pick works", async () => {
+  const pick = vi.fn<(id: string) => Promise<string | null>>(async () => {
+    throw "unsupported file";
+  });
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  localStorage.clear();
+  const registry = createPresetRegistry({ newId: () => "abcd1234" });
+  registry.create("companion");
+  const el = document.createElement("div");
+  createPresetManage({ el, registry, log, pickPhoto: pick }).render();
+  const click = () =>
+    el
+      .querySelector<HTMLButtonElement>('[data-preset-id="abcd1234"] .yui-preset-row__photo')!
+      .click();
+
+  click();
+
+  await vi.waitFor(() =>
+    expect(el.querySelector(".yui-input-row__error")?.textContent).toBe(
+      "Could not use that photo. Choose a PNG or JPEG.",
+    ),
+  );
+  expect(log.warn).toHaveBeenCalledWith("photo_pick_failed", {
+    preset: "abcd1234",
+    error: "unsupported file",
+  });
+
+  pick.mockResolvedValueOnce("asset://x/abcd1234.png?v=1");
+  click();
+  await vi.waitFor(() => expect(el.querySelector(".yui-input-row__error")).toBeNull());
+  registry.dispose();
+});

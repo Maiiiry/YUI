@@ -12,12 +12,17 @@ import {
 } from "../../../settings/preset/active-preset";
 import { isPresetWindowLive, type PetWindows } from "../../../settings/preset/pet-windows";
 import { DEFAULT_PRESET_ID } from "../../../settings/preset/preset-keys";
-import type { PresetRegistry } from "../../../settings/preset/preset-registry";
+import { type PresetRegistry, RESERVED_NAMES } from "../../../settings/preset/preset-registry";
 import { t } from "../../i18n";
 import { PLUS_SVG } from "../constants";
 import { REMOVE_SVG, RENAME_SVG } from "../sections/user-asset-list/user-asset-list";
 
-type Registry = Pick<PresetRegistry, "get" | "create" | "rename" | "remove" | "activate">;
+const PHOTO_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5-8 8"/></svg>`;
+
+type Registry = Pick<
+  PresetRegistry,
+  "get" | "create" | "rename" | "remove" | "activate" | "setThumbnail"
+>;
 
 export interface PresetManage {
   render(): void;
@@ -41,19 +46,26 @@ export function createPresetManage(deps: {
   presetUrl?: (id: string) => string | null;
   /** Deletes a removed preset's thumbnail file; idempotent, so JSON-card presets are fine. */
   removeCardThumbnail?: (id: string) => Promise<void>;
+  /** Opens the photo picker for a preset and returns its new thumbnail URL, null when dismissed; absent, rows offer no photo button. */
+  pickPhoto?: (presetId: string) => Promise<string | null>;
 }): PresetManage {
   const { el, registry, log, petWindows, boundId } = deps;
   const edit = !!deps.edit;
   let renamingId: string | null = null;
   let confirmId: string | null = null;
   let naming = false;
+  // A picked photo the shell refused: the list says so until the next pick or the popover closes.
+  let photoError = false;
   // The field keeps what was typed across a re-render (another window's edit lands mid-typing).
   let draft = "";
   // The control to focus after the next render, so keyboard users stay where they acted.
   let focusSel: string | null = null;
 
   function isTaken(state: PresetState, name: string, exceptId?: string): boolean {
-    return state.list.some((e) => e.id !== exceptId && e.name === name.trim());
+    return (
+      RESERVED_NAMES.has(name.trim().toLowerCase()) ||
+      state.list.some((e) => e.id !== exceptId && e.name === name.trim())
+    );
   }
 
   function rowEl(entry: PresetEntry, active: string): HTMLElement {
@@ -71,10 +83,26 @@ export function createPresetManage(deps: {
     row.innerHTML = `
           <span class="yui-preset-row__name"></span>${entry.id === active ? `<span class="yui-preset-row__badge">${t("preset.in_use")}</span>` : ""}${edit && (desired || live) ? `<span class="yui-preset-row__badge">${t("preset.window_open")}</span>` : ""}
           <span class="yui-preset-row__acts">
-            <button class="yui-preset-row__rename" type="button">${RENAME_SVG}</button>${removable ? `<button class="yui-preset-row__remove" type="button">${REMOVE_SVG}</button>` : ""}
+            ${deps.pickPhoto ? `<button class="yui-preset-row__photo" type="button">${PHOTO_SVG}</button>` : ""}<button class="yui-preset-row__rename" type="button">${RENAME_SVG}</button>${removable ? `<button class="yui-preset-row__remove" type="button">${REMOVE_SVG}</button>` : ""}
           </span>`;
     // Names are user input — text and attributes go through the DOM, never markup.
     row.querySelector(".yui-preset-row__name")!.textContent = entry.name;
+    const photoBtn = row.querySelector<HTMLButtonElement>(".yui-preset-row__photo");
+    photoBtn?.setAttribute("aria-label", t("preset.photo", { name: entry.name }));
+    photoBtn?.addEventListener("click", () => {
+      deps
+        .pickPhoto?.(entry.id)
+        .then((url) => {
+          photoError = false;
+          if (url !== null) registry.setThumbnail(entry.id, url);
+          render();
+        })
+        .catch((err) => {
+          log.warn("photo_pick_failed", { preset: entry.id, error: String(err) });
+          photoError = true;
+          render();
+        });
+    });
     const renameBtn = row.querySelector<HTMLButtonElement>(".yui-preset-row__rename")!;
     renameBtn.setAttribute("aria-label", t("preset.rename", { name: entry.name }));
     renameBtn.addEventListener("click", () => {
@@ -287,6 +315,13 @@ export function createPresetManage(deps: {
     }
     group.append(naming ? newFieldEl(state) : addRowEl());
     el.replaceChildren(group);
+    if (photoError) {
+      const note = document.createElement("div");
+      note.className = "yui-input-row is-invalid";
+      note.innerHTML = `<p class="yui-input-row__error" role="status"></p>`;
+      note.firstElementChild!.textContent = t("preset.photo_failed");
+      el.append(note);
+    }
     if (focusSel) {
       el.querySelector<HTMLElement>(focusSel)?.focus();
       focusSel = null;
@@ -300,6 +335,7 @@ export function createPresetManage(deps: {
       confirmId = null;
       naming = false;
       draft = "";
+      photoError = false;
     },
     focusFirst(): void {
       el.querySelector<HTMLElement>("button, input")?.focus();

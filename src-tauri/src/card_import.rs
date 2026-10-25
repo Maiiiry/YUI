@@ -6,8 +6,8 @@
 //! those files and writes an exported card file.
 
 use crate::import_fs::{
-    app_data_subdir, claim_and_copy, ensure_within, open_and_import, sanitize_stem, ClaimTarget,
-    SniffKind,
+    app_data_subdir, claim_and_copy, ensure_within, open_and_import, sanitize_stem, sniff_ok,
+    ClaimTarget, SniffKind,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::Serialize;
@@ -23,6 +23,13 @@ const MAX_JSON_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PNG_BYTES: u64 = 32 * 1024 * 1024;
 
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+
+/// Longest edge, in px, of a JPEG photo re-encoded as a preset's thumbnail.
+const PHOTO_EDGE: u32 = 512;
+
+/// Widest or tallest JPEG, in px, the photo decode accepts, and the most memory it may take.
+const PHOTO_DECODE_MAX_EDGE: u32 = 8192;
+const PHOTO_DECODE_MAX_ALLOC: u64 = 256 * 1024 * 1024;
 
 /// Card file handed to the webview: the card JSON and, for a PNG, the temp thumbnail id.
 #[derive(Debug, Clone, Serialize)]
@@ -138,6 +145,47 @@ fn retain_thumbnail_at(cards: &Path, temp_id: &str, preset_id: &str) -> Result<S
     Ok(dest.to_string_lossy().into_owned())
 }
 
+/// A picked photo as PNG bytes: a PNG passes through, a JPEG is decoded and fitted to `PHOTO_EDGE`.
+fn photo_as_png(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+    if sniff_ok(&bytes, SniffKind::Png) {
+        return Ok(bytes);
+    }
+    if !sniff_ok(&bytes, SniffKind::Jpeg) {
+        return Err("unsupported file".to_string());
+    }
+    let unreadable = |e: image::ImageError| {
+        log::warn!("photo_unreadable error={e}");
+        "photo unreadable".to_string()
+    };
+    let mut reader =
+        image::ImageReader::with_format(std::io::Cursor::new(&bytes), image::ImageFormat::Jpeg);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(PHOTO_DECODE_MAX_EDGE);
+    limits.max_image_height = Some(PHOTO_DECODE_MAX_EDGE);
+    limits.max_alloc = Some(PHOTO_DECODE_MAX_ALLOC);
+    reader.limits(limits);
+    let photo = reader.decode().map_err(unreadable)?;
+    let mut png = Vec::new();
+    photo
+        .thumbnail(PHOTO_EDGE, PHOTO_EDGE)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(unreadable)?;
+    Ok(png)
+}
+
+/// Store a picked photo as `cards/<preset_id>.png`, replacing the preset's thumbnail, and
+/// return the dest path.
+fn store_preset_photo(
+    cards: &Path,
+    preset_id: &str,
+    identity: &str,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let png = photo_as_png(bytes)?;
+    let temp_id = claim_thumbnail(cards, "photo", identity, &png)?;
+    retain_thumbnail_at(cards, &temp_id, preset_id)
+}
+
 /// Delete `cards/<sanitized id>.png` if present. Idempotent — missing is Ok.
 fn remove_thumbnail_at(cards: &Path, id: &str) -> Result<(), String> {
     if !cards.exists() {
@@ -213,6 +261,31 @@ pub fn retain_card_thumbnail(
     preset_id: String,
 ) -> Result<String, String> {
     retain_thumbnail_at(&cards_dir(&app)?, &temp_id, &preset_id)
+}
+
+/// Open the photo picker here and store the picked PNG or JPEG as the preset's thumbnail,
+/// returning the file path. A JPEG decodes within `PHOTO_DECODE_MAX_EDGE` and
+/// `PHOTO_DECODE_MAX_ALLOC`, so a small file cannot expand to an unbounded bitmap. `None` when the picker is dismissed.
+#[command]
+pub async fn pick_preset_photo(
+    app: AppHandle,
+    preset_id: String,
+) -> Result<Option<String>, String> {
+    let Some(src_path) = app
+        .dialog()
+        .file()
+        .add_filter("Photo", &["png", "jpg", "jpeg"])
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let cards = cards_dir(&app)?;
+    open_and_import(app, src_path, move |_name, identity, mut source| {
+        let bytes = read_bounded(&mut source, MAX_PNG_BYTES)?;
+        store_preset_photo(&cards, &preset_id, &identity, bytes)
+    })
+    .await
+    .map(Some)
 }
 
 /// Delete a thumbnail file by temp id or preset id. Idempotent — missing is Ok.
@@ -350,6 +423,84 @@ mod tests {
         remove_thumbnail_at(&cards, "abcd1234").unwrap();
         assert!(!cards.join("abcd1234.png").exists());
         remove_thumbnail_at(&cards, "abcd1234").unwrap(); // idempotent
+        std::fs::remove_dir_all(&cards).ok();
+    }
+
+    fn encoded(w: u32, h: u32, format: image::ImageFormat) -> Vec<u8> {
+        let mut out = Vec::new();
+        image::DynamicImage::new_rgb8(w, h)
+            .write_to(&mut std::io::Cursor::new(&mut out), format)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn a_picked_png_is_stored_as_the_presets_thumbnail() {
+        let cards = unique_dir("photo_png");
+        let png = encoded(8, 8, image::ImageFormat::Png);
+
+        let dest = store_preset_photo(&cards, "abcd1234", "file:///me.png", png.clone()).unwrap();
+
+        assert_eq!(
+            dest,
+            cards.join("abcd1234.png").to_string_lossy().into_owned()
+        );
+        assert_eq!(std::fs::read(cards.join("abcd1234.png")).unwrap(), png);
+        assert_eq!(std::fs::read_dir(&cards).unwrap().count(), 1); // no temp copy left behind
+        std::fs::remove_dir_all(&cards).ok();
+    }
+
+    #[test]
+    fn a_second_pick_replaces_the_first() {
+        let cards = unique_dir("photo_twice");
+        let first = encoded(8, 8, image::ImageFormat::Png);
+        let second = encoded(9, 9, image::ImageFormat::Png);
+
+        store_preset_photo(&cards, "abcd1234", "file:///a.png", first).unwrap();
+        store_preset_photo(&cards, "abcd1234", "file:///b.png", second.clone()).unwrap();
+
+        assert_eq!(std::fs::read(cards.join("abcd1234.png")).unwrap(), second);
+        assert_eq!(std::fs::read_dir(&cards).unwrap().count(), 1);
+        std::fs::remove_dir_all(&cards).ok();
+    }
+
+    #[test]
+    fn a_jpeg_is_stored_as_a_png_fitted_to_the_photo_edge() {
+        let cards = unique_dir("photo_jpeg");
+        let jpeg = encoded(1024, 512, image::ImageFormat::Jpeg);
+
+        store_preset_photo(&cards, "abcd1234", "file:///me.jpg", jpeg).unwrap();
+
+        let stored = std::fs::read(cards.join("abcd1234.png")).unwrap();
+        assert!(stored.starts_with(PNG_SIGNATURE));
+        let (w, h) = image::load_from_memory(&stored)
+            .map(|i| (i.width(), i.height()))
+            .unwrap();
+        assert_eq!((w, h), (PHOTO_EDGE, PHOTO_EDGE / 2));
+        std::fs::remove_dir_all(&cards).ok();
+    }
+
+    #[test]
+    fn a_jpeg_wider_than_the_decode_limit_is_refused_and_stores_nothing() {
+        let cards = unique_dir("photo_huge");
+        let jpeg = encoded(PHOTO_DECODE_MAX_EDGE + 1, 1, image::ImageFormat::Jpeg);
+
+        let err = store_preset_photo(&cards, "abcd1234", "file:///huge.jpg", jpeg).unwrap_err();
+
+        assert_eq!(err, "photo unreadable".to_string());
+        assert!(!cards.join("abcd1234.png").exists());
+        std::fs::remove_dir_all(&cards).ok();
+    }
+
+    #[test]
+    fn a_file_that_is_no_png_or_jpeg_is_refused_and_stores_nothing() {
+        let cards = unique_dir("photo_refused");
+
+        let err = store_preset_photo(&cards, "abcd1234", "file:///me.txt", b"hello".to_vec())
+            .unwrap_err();
+
+        assert_eq!(err, "unsupported file".to_string());
+        assert!(!cards.join("abcd1234.png").exists());
         std::fs::remove_dir_all(&cards).ok();
     }
 }

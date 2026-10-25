@@ -182,6 +182,8 @@ const en: Record<string, string> = {
   "preset.use_in_main": "Use in main",
   "preset.window_open": "Window open",
   "preset.rename": "Rename {name}",
+  "preset.photo": "Choose a photo for {name}",
+  "preset.photo_failed": "Could not use that photo. Choose a PNG or JPEG.",
   "preset.remove": "Delete {name}",
   "preset.name_aria": "Preset name",
   "preset.hint_save": "save",
@@ -257,6 +259,19 @@ const en: Record<string, string> = {
   "card.export_error": "Could not write the file",
   "card.user_name": "Your name",
   "card.user_name_sub": "Shared by every preset",
+
+  // unified chat window
+  "unified.enable_label": "Unified chat",
+  "unified.enable_sub":
+    "With two or more characters open, talk to all of them in one window; @ picks who answers, else the last speaker",
+  "unified.title": "Unified chat",
+  "unified.to": "to {name}",
+  "unified.marker": "→ {name}",
+  "unified.everyone_sub": "to every open character",
+  "unified.hint": "@ picks who answers",
+  "unified.remove_mention": "Remove mention",
+  "unified.just_now": "now",
+  "unified.pending": "sending",
 
   // filler (thinking interjections)
   "filler.section": "Thinking interjections",
