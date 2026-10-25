@@ -6,6 +6,7 @@ import { targetLabel } from "../../../settings/relations/relation-targets";
 import {
   DELTAS,
   type RelationsStore,
+  SET_BY_USER,
   WHY_LENGTH,
 } from "../../../settings/relations/relations-store";
 import type { ClientTool } from "./client-tools";
@@ -24,8 +25,11 @@ export function createRateRelationTool(deps: {
   /** The other open presets, read each time the schema is built. */
   targets: () => PresetEntry[];
   now?: () => number;
+  /** The Relations switch, read when a call runs. */
+  enabled?: () => boolean;
 }): ClientTool {
   const now = deps.now ?? Date.now;
+  const enabled = deps.enabled ?? (() => true);
   const rated = new Map<string, Set<string>>();
 
   /** Label to target id; the bare `user` is always the human. */
@@ -57,11 +61,13 @@ export function createRateRelationTool(deps: {
       };
     },
     execute: async (args, _signal, call) => {
+      if (!enabled()) return "error: relations are off";
       const { toward, delta, why } = args;
       const id = typeof toward === "string" ? labels().get(toward) : undefined;
       if (id === undefined) return "error: unknown target";
       if (typeof delta !== "number" || !DELTAS.includes(delta)) return "error: invalid field delta";
       if (typeof why !== "string") return "error: invalid field why";
+      if (why.trim() === SET_BY_USER) return "error: reserved reason";
       const key = call?.turnId ?? "";
       const turn = rated.get(key) ?? new Set<string>();
       if (turn.has(id)) return `ignored: already rated ${toward} this turn`;
@@ -74,5 +80,6 @@ export function createRateRelationTool(deps: {
       return clamped ? `clamped: ${band}` : band;
     },
     waitMs: 2000,
+    switch: { id: "relations", on: enabled },
   };
 }

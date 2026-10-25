@@ -55,6 +55,7 @@ import type { createScheduleSettings } from "../../settings/cues/schedule-settin
 import type { createUserNameSettings } from "../../settings/identity/user-name-settings";
 import type { MessageWindowSettingsStore } from "../../settings/panels/message-window-settings";
 import type { ClampedIntSettingsStore, FlagSettingsStore } from "../../settings/persisted-store";
+import { presetIdForWindow } from "../../settings/preset/active-preset";
 import type { PetWindows } from "../../settings/preset/pet-windows";
 import type { PresetRegistry } from "../../settings/preset/preset-registry";
 import type { RelationsStore } from "../../settings/relations/relations-store";
@@ -262,6 +263,8 @@ interface QuickControlsOptions {
   petWindows?: PetWindows;
   /** This window's preset's relations, shown under the preset row. */
   relationsStore?: RelationsStore;
+  /** The Relations switch: the Relations section's toggle and the relation line's gate. */
+  relationsSwitch: FlagSettingsStore;
   boundId?: string | null;
   /** Set in the settings window: the preset strip picks the preset the window edits. */
   onEditTarget?: (id: string) => void;
@@ -362,6 +365,7 @@ export function createQuickControls({
   presetRegistry,
   petWindows,
   relationsStore,
+  relationsSwitch,
   boundId,
   onEditTarget,
   showVoiceInput = true,
@@ -471,6 +475,7 @@ export function createQuickControls({
         onEditTarget,
         agentNotifySettings,
         relationsStore,
+        relationsSwitch,
         removeCardThumbnail,
       })
     : null;
@@ -488,6 +493,7 @@ export function createQuickControls({
       expressMotion: !!expressMotionSettings,
       bedScene: !!bedSceneSettings,
       viewpoint: !!onResetViewpoint,
+      relations: !!relationsStore && !!relationsSwitch && !!presetRegistry,
     },
     variant: "panel",
     vrmSelection,
@@ -511,6 +517,16 @@ export function createQuickControls({
         }
       : {}),
     ...(bedSceneSettings ? { bedScene: { settings: bedSceneSettings } } : {}),
+    ...(relationsStore && relationsSwitch && presetRegistry
+      ? {
+          relations: {
+            store: relationsStore,
+            relationsSwitch,
+            self: presetIdForWindow(),
+            presets: () => presetRegistry.get().list,
+          },
+        }
+      : {}),
   });
   el.querySelector("#yui-panel-char")!.append(characterTab.el);
 

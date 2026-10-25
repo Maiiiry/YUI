@@ -21,7 +21,7 @@ const ITEM_CEILING_BYTES: usize = 16 * 1024;
 
 /// The `/relations` record limits, as `docs/reference/signals-ingress.md` states them.
 const VALUE_RANGE: std::ops::RangeInclusive<i64> = -20..=20;
-const DELTA_RANGE: std::ops::RangeInclusive<i64> = -2..=2;
+const DELTA_RANGE: std::ops::RangeInclusive<i64> = -40..=40;
 const LOG_LENGTH: usize = 20;
 const WHY_CHARS: usize = 80;
 const NOTE_CHARS: usize = 200;
@@ -858,11 +858,11 @@ mod tests {
         use serde_json::json;
         let change = |delta: i64, why: String| json!({"at": 1, "delta": delta, "why": why});
         let at_limits = json!({"user": {"value": -20, "updated_at": 1,
-            "log": vec![change(-2, "x".repeat(80)); 20], "note": "x".repeat(200)}});
+            "log": vec![change(-40, "x".repeat(80)); 20], "note": "x".repeat(200)}});
         assert!(parse_avatar_request("PUT", "/relations", &at_limits.to_string()).is_ok());
         for body in [
             json!({"user": {"value": 25, "updated_at": 1, "log": []}}),
-            json!({"user": {"value": 1, "updated_at": 1, "log": [change(3, "x".into())]}}),
+            json!({"user": {"value": 1, "updated_at": 1, "log": [change(41, "x".into())]}}),
             json!({"user": {"value": 1, "updated_at": 1, "log": [change(0, "x".into())]}}),
             json!({"user": {"value": 1, "updated_at": 1, "log": [change(1, "x".repeat(81))]}}),
             json!({"user": {"value": 1, "updated_at": 1, "log": [], "note": "x".repeat(201)}}),
