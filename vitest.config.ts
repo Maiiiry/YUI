@@ -8,3 +8,5 @@ export default defineConfig({
     mockReset: true,
   },
 });
+
+# Automated fix for issue #1592: [bug] Push mode hides the whole card section, so Import card… and the greeting fields are unreachable
